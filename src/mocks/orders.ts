@@ -35,7 +35,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
   } satisfies Partial<OrderDetail>;
 
   return [
-    // ---------- Alex as BUYER ----------
+    // ---------- Client (Alice Morgan) as BUYER ----------
     {
       ...base,
       id: "84920",
@@ -43,7 +43,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
       status: "DELIVERED",
       viewerRole: "buyer",
       gig: icon,
-      buyer: { name: "Alex Chen" },
+      buyer: { name: "Alice Morgan" },
       seller: { name: "Sara Connor" },
       priceCents: 3500,
       turnaroundHours: 48,
@@ -80,14 +80,14 @@ export function buildMockOrders(now: number): OrderDetail[] {
       ],
       messages: [
         { id: "m1", senderRole: "seller", senderName: "Sara Connor", body: "Thanks for the order! Starting on concepts now.", attachmentName: null, createdAt: t(-3 * D + H) },
-        { id: "m2", senderRole: "buyer", senderName: "Alex Chen", body: "Great, looking forward to it.", attachmentName: null, createdAt: t(-3 * D + 2 * H) },
+        { id: "m2", senderRole: "buyer", senderName: "Alice Morgan", body: "Great, looking forward to it.", attachmentName: null, createdAt: t(-3 * D + 2 * H) },
         { id: "m3", senderRole: "seller", senderName: "Sara Connor", body: "Revision uploaded, let me know what you think.", attachmentName: null, createdAt: t(-20 * 60 * 1000) },
       ],
       events: events(
-        ["Order placed", "Alex Chen", -3 * D, "$35.00 moved to escrow"],
-        ["Requirements submitted", "Alex Chen", -3 * D + 10 * 60 * 1000],
+        ["Order placed", "Alice Morgan", -3 * D, "$35.00 moved to escrow"],
+        ["Requirements submitted", "Alice Morgan", -3 * D + 10 * 60 * 1000],
         ["Delivery #1 submitted", "Sara Connor", -2 * D, "ledgerly-icon-v1.png"],
-        ["Revision 1 of 2 requested", "Alex Chen", -1.5 * D, "Could the green be brighter and the lines thicker?"],
+        ["Revision 1 of 2 requested", "Alice Morgan", -1.5 * D, "Could the green be brighter and the lines thicker?"],
         ["Delivery #2 submitted", "Sara Connor", -20 * 60 * 1000, "ledgerly-icon-v2.png"],
       ),
     },
@@ -98,7 +98,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
       status: "IN_PROGRESS",
       viewerRole: "buyer",
       gig: proof,
-      buyer: { name: "Alex Chen" },
+      buyer: { name: "Alice Morgan" },
       seller: { name: "Marcus Vance" },
       priceCents: 1500,
       turnaroundHours: 24,
@@ -108,8 +108,8 @@ export function buildMockOrders(now: number): OrderDetail[] {
       createdAt: t(-51 * H),
       deadline: t(-26 * H),
       events: events(
-        ["Order placed", "Alex Chen", -51 * H, "$15.00 moved to escrow"],
-        ["Requirements submitted", "Alex Chen", -50 * H],
+        ["Order placed", "Alice Morgan", -51 * H, "$15.00 moved to escrow"],
+        ["Requirements submitted", "Alice Morgan", -50 * H],
         ["Late delivery warning sent", "System", -26 * H],
       ),
     },
@@ -120,7 +120,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
       status: "PENDING_REQUIREMENTS",
       viewerRole: "buyer",
       gig: icon,
-      buyer: { name: "Alex Chen" },
+      buyer: { name: "Alice Morgan" },
       seller: { name: "Sara Connor" },
       priceCents: 3500,
       turnaroundHours: 48,
@@ -128,7 +128,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
       requirementsAnswers: null,
       createdAt: t(-5 * 60 * 1000),
       deadline: null,
-      events: events(["Order placed", "Alex Chen", -5 * 60 * 1000, "$35.00 moved to escrow"]),
+      events: events(["Order placed", "Alice Morgan", -5 * 60 * 1000, "$35.00 moved to escrow"]),
     },
     {
       ...base,
@@ -137,7 +137,7 @@ export function buildMockOrders(now: number): OrderDetail[] {
       status: "COMPLETED",
       viewerRole: "buyer",
       gig: proof,
-      buyer: { name: "Alex Chen" },
+      buyer: { name: "Alice Morgan" },
       seller: { name: "Marcus Vance" },
       priceCents: 1500,
       turnaroundHours: 24,
@@ -161,14 +161,14 @@ export function buildMockOrders(now: number): OrderDetail[] {
         },
       ],
       events: events(
-        ["Order placed", "Alex Chen", -3 * D],
-        ["Requirements submitted", "Alex Chen", -3 * D + H],
+        ["Order placed", "Alice Morgan", -3 * D],
+        ["Requirements submitted", "Alice Morgan", -3 * D + H],
         ["Delivery #1 submitted", "Marcus Vance", -2 * D - 3 * H],
-        ["Delivery accepted", "Alex Chen", -1 * D, "Escrow released to seller"],
+        ["Delivery accepted", "Alice Morgan", -1 * D, "Escrow released to seller"],
       ),
     },
 
-    // ---------- Alex as SELLER ----------
+    // ---------- Freelancer (Alex Chen) as SELLER ----------
     {
       ...base,
       id: "84925",

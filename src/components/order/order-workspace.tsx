@@ -45,7 +45,16 @@ const SUCCESS: Record<ActionPayload["type"], string> = {
  * Demo mode applies actions locally via the state machine.
  * TODO: call the matching POST /api/v1/orders/:id/* endpoint, then replace state with the response (409 → refetch).
  */
-export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; serverNow: number }) {
+export function OrderWorkspace({
+  initial,
+  serverNow,
+  readOnly = false,
+}: {
+  initial: OrderDetail;
+  serverNow: number;
+  /** Admin viewing someone else's order: no actions, no composer. */
+  readOnly?: boolean;
+}) {
   const [order, setOrder] = useState(initial);
   const [now, setNow] = useState(serverNow);
   const [tab, setTab] = useState(() =>
@@ -66,7 +75,7 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
   }, [serverNow]);
 
   const role = order.viewerRole;
-  const actions = availableActions(order, role, now);
+  const actions = readOnly ? [] : availableActions(order, role, now);
   const can = (a: ActionPayload["type"]) => actions.includes(a);
   const late = isLate(order, now);
   const viewerName = role === "buyer" ? order.buyer.name : order.seller.name;
@@ -90,8 +99,8 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
 
   return (
     <div className="container space-y-6 py-8">
-      <Link href={`/orders?role=${role}`} className="text-sm font-semibold text-heading hover:underline">
-        ← Back to manage orders
+      <Link href={readOnly ? "/admin/disputes" : "/orders"} className="text-sm font-semibold text-heading hover:underline">
+        ← {readOnly ? "Back to disputes" : "Back to orders"}
       </Link>
 
       {/* Header */}
@@ -100,6 +109,7 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
           <div className="space-y-1">
             <h1 className="flex items-center gap-2 text-xl font-bold">
               Order #{order.orderNumber}
+              {readOnly ? null : (
               <button
                 type="button"
                 aria-pressed={order.isStarred}
@@ -109,6 +119,7 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
               >
                 <Star className={cn("h-5 w-5 text-heading", order.isStarred && "fill-heading")} aria-hidden />
               </button>
+              )}
             </h1>
             <p className="text-sm text-muted-foreground">
               Placed on {formatDate(order.createdAt)} • Total: {formatCents(order.priceCents)} (Escrow Secured)
@@ -219,14 +230,16 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
           </TabsContent>
 
           <TabsContent value="messages" className="space-y-3">
-            <Link href={`/inbox?thread=${order.id}`} className="inline-block text-sm font-semibold text-heading underline">
-              Open in inbox
-            </Link>
+            {readOnly ? null : (
+              <Link href={`/inbox?thread=${order.id}`} className="inline-block text-sm font-semibold text-heading underline">
+                Open in inbox
+              </Link>
+            )}
             <MessageThread
               messages={order.messages}
               viewerRole={role}
               viewerName={viewerName}
-              disabled={order.status === "CANCELLED"}
+              disabled={readOnly || order.status === "CANCELLED"}
               onSend={(m) => setOrder((o) => ({ ...o, messages: [...o.messages, m] }))}
             />
           </TabsContent>
@@ -239,7 +252,7 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
         {/* Actions & summary */}
         <aside className="space-y-4">
           <Card className="space-y-3 p-5">
-            <h2 className="text-base font-semibold">{role === "buyer" ? "Buyer actions" : "Seller actions"}</h2>
+            <h2 className="text-base font-semibold">{readOnly ? "Admin view (read-only)" : role === "buyer" ? "Your actions" : "Seller actions"}</h2>
             {can("SUBMIT_REQUIREMENTS") ? (
               <Button className="w-full" onClick={() => setTab("details")}>
                 Submit requirements
@@ -259,7 +272,7 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
                 onConfirm={() => act({ type: "ACCEPT" })}
               />
             ) : null}
-            {order.status === "DELIVERED" && role === "buyer" ? (
+            {order.status === "DELIVERED" && role === "buyer" && !readOnly ? (
               can("REQUEST_REVISION") ? (
                 <ReasonDialog
                   trigger={`Request Revision (${order.revisionsUsed} of ${order.revisionsIncluded} used)`}
@@ -335,7 +348,9 @@ export function OrderWorkspace({ initial, serverNow }: { initial: OrderDetail; s
             ) : null}
             {actions.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                {order.status === "DELIVERED" && role === "seller"
+                {readOnly
+                  ? "Admins can read this order but not act on it. Resolve disputes from the Disputes page."
+                  : order.status === "DELIVERED" && role === "seller"
                   ? "Waiting for the buyer to review your delivery."
                   : order.status === "COMPLETED"
                     ? "Order complete."

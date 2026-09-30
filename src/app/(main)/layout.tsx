@@ -17,7 +17,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </p>
       ) : null}
       <SiteHeader />
-      <main id="main" className="min-h-[calc(100vh-8rem)]">
+      <main id="main" className="min-h-[calc(100vh-8rem)] pb-16">
         {children}
       </main>
       <SiteFooter />

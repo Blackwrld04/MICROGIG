@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { formatCents, formatSignedCents, parseDollarsToCents } from "@/lib/money";
 import { formatDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { WalletSummary } from "@/modules/ledger/contracts";
 import type { WalletActivity } from "@/mocks/account";
 
 const TOP_UP_CENTS = 5000;
@@ -42,8 +41,19 @@ function toCsv(rows: WalletActivity[]): string {
  * Wallet & earnings — PRD §11.6 / §16.7.
  * TODO: POST top-up / withdraw endpoints (not yet in §12); CSV via GET /api/v1/wallet/activity?format=csv.
  */
-export function WalletView({ initialSummary, initialActivity }: { initialSummary: WalletSummary; initialActivity: WalletActivity[] }) {
-  const [summary, setSummary] = useState(initialSummary);
+export function WalletView({
+  mode,
+  cards,
+  initialAvailable,
+  initialActivity,
+}: {
+  mode: "CLIENT" | "FREELANCER";
+  /** First card is always the live available balance. */
+  cards: { label: string; value: number; note: string }[];
+  initialAvailable: number;
+  initialActivity: WalletActivity[];
+}) {
+  const [available, setAvailable] = useState(initialAvailable);
   const [activity, setActivity] = useState(initialActivity); // newest first
   const [notice, setNotice] = useState("");
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -51,8 +61,8 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
   const [amountError, setAmountError] = useState<string>();
 
   function record(type: WalletActivity["type"], description: string, amountCents: number) {
-    const balanceCents = summary.available + amountCents;
-    setSummary((s) => ({ ...s, available: balanceCents }));
+    const balanceCents = available + amountCents;
+    setAvailable(balanceCents);
     setActivity((a) => [
       { txnId: `txn_${Date.now().toString().slice(-6)}`, createdAt: new Date().toISOString(), description, type, amountCents, balanceCents },
       ...a,
@@ -63,7 +73,7 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
     e.preventDefault();
     const cents = parseDollarsToCents(amount);
     if (cents === null || cents <= 0) return setAmountError("Enter an amount like 25 or 25.50");
-    if (cents > summary.available) return setAmountError(`You can withdraw up to ${formatCents(summary.available)}`);
+    if (cents > available) return setAmountError(`You can withdraw up to ${formatCents(available)}`);
     record("WITHDRAWAL", "Simulated payout", -cents);
     setNotice(`${formatCents(cents)} withdrawal simulated.`);
     setAmount("");
@@ -81,17 +91,12 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
     URL.revokeObjectURL(url);
   }
 
-  const cards = [
-    { label: "Available funds", value: summary.available, note: "Spend or withdraw now" },
-    { label: "Pending clearance", value: summary.pending, note: "3-day hold after completion" },
-    { label: "In active orders", value: summary.inActiveOrders, note: "Held in escrow" },
-    { label: "Lifetime earnings", value: summary.lifetimeEarnings, note: "Before withdrawals" },
-  ];
+  const liveCards = cards.map((c, i) => (i === 0 ? { ...c, value: available } : c));
 
   return (
     <div className="space-y-6">
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((c) => (
+      <ul className={cn("grid gap-4 sm:grid-cols-2", liveCards.length === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+        {liveCards.map((c) => (
           <li key={c.label}>
             <Card className="h-full p-5">
               <p className="text-sm text-muted-foreground">{c.label}</p>
@@ -103,21 +108,22 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
       </ul>
 
       <div className="flex flex-wrap gap-2">
+        {mode === "FREELANCER" ? (
         <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
           <DialogTrigger asChild>
-            <Button variant="dark" disabled={summary.available <= 0}>
+            <Button variant="dark" disabled={available <= 0}>
               Withdraw balance
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogTitle>Withdraw funds</DialogTitle>
-            <DialogDescription>Simulated payout. Available: {formatCents(summary.available)}.</DialogDescription>
+            <DialogDescription>Simulated payout. Available: {formatCents(available)}.</DialogDescription>
             <form onSubmit={withdraw} noValidate className="space-y-4">
               <Field id="withdraw-amount" label="Amount (USD)" error={amountError}>
                 {(props) => <Input {...props} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="25.00" />}
               </Field>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setAmount((summary.available / 100).toFixed(2))}>
+                <Button type="button" variant="outline" onClick={() => setAmount((available / 100).toFixed(2))}>
                   Withdraw all
                 </Button>
                 <Button type="submit">Withdraw</Button>
@@ -125,6 +131,8 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
             </form>
           </DialogContent>
         </Dialog>
+        ) : null}
+        {mode === "CLIENT" ? (
         <Button
           variant="outline"
           onClick={() => {
@@ -134,6 +142,7 @@ export function WalletView({ initialSummary, initialActivity }: { initialSummary
         >
           <Plus aria-hidden /> Add {formatCents(TOP_UP_CENTS)} virtual test funds
         </Button>
+        ) : null}
       </div>
 
       <p aria-live="polite" className="sr-only">

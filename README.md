@@ -33,9 +33,20 @@ src/
 
 ## Demo mode
 
-Until the backend APIs exist, the app runs on fixture data in `src/mocks/` and you are signed in as a
-sample user (buyer + seller + admin). Actions (accept, revise, deliver, withdraw…) run locally through
-`modules/orders/state-machine.ts` and are not saved. Turn it off with `NEXT_PUBLIC_USE_MOCKS=false`.
+Until the backend APIs exist, the app runs on fixture data in `src/mocks/`. Sign in at `/login` with a
+one-click demo account (any password):
+
+| Account | Email | Sees |
+|---|---|---|
+| Client | alice@example.com | Catalog, checkout, my orders, inbox, wallet |
+| Freelancer | alex@example.com | Seller dashboard, gig wizard, orders to deliver, inbox, earnings |
+| Admin | admin@microgig.dev | ID verifications, disputes, read-only orders |
+
+Accounts are **either** client **or** freelancer, chosen at sign-up and never switchable (a deliberate
+change from PRD §3.1). The demo auth handlers live in `src/app/api/v1/auth/` and set a demo session
+cookie; the auth owner replaces them with the real §12.1 implementation. Actions (accept, revise,
+deliver, withdraw…) run locally through `modules/orders/state-machine.ts` and are not saved.
+Turn demo mode off with `NEXT_PUBLIC_USE_MOCKS=false`.
 Each `modules/*/queries.ts` function has a `TODO` where the real Prisma query goes; keep the signatures.
 
 ## Conventions

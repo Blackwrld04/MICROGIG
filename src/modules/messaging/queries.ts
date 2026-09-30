@@ -23,8 +23,9 @@ export interface InboxThread {
  * Inbox threads — MSG-02. One thread per order (MSG-01 is order-scoped).
  * TODO(messaging owner): real query with per-user read/star/archive state.
  */
-export async function listThreads(nowMs: number): Promise<InboxThread[]> {
+export async function listThreads(role: ViewerRole, nowMs: number): Promise<InboxThread[]> {
   return buildMockOrders(nowMs)
+    .filter((o) => o.viewerRole === role)
     .map((o) => {
       const viewerName = o.viewerRole === "buyer" ? o.buyer.name : o.seller.name;
       const counterpartyName = o.viewerRole === "buyer" ? o.seller.name : o.buyer.name;

@@ -3,6 +3,7 @@ import type { OrderTab } from "@/lib/constants/order-status";
 import { isLate } from "@/lib/time";
 import { buildMockOrders } from "@/mocks/orders";
 import { inTab, tabCounts } from "./tabs";
+import type { AccountType, Me } from "@/modules/auth/contracts";
 import type { OrderDetail, ViewerRole } from "./types";
 
 /*
@@ -52,8 +53,21 @@ export async function listOrders(role: ViewerRole, tab: OrderTab, search: string
   return { counts: tabCounts(mine, nowMs), orders: rows };
 }
 
-export async function getOrder(id: string, nowMs: number): Promise<OrderDetail | null> {
-  return buildMockOrders(nowMs).find((o) => o.id === id) ?? null;
+/** Account type → the side of an order that account can be on. */
+export function roleFor(accountType: AccountType): ViewerRole {
+  return accountType === "FREELANCER" ? "seller" : "buyer";
+}
+
+/**
+ * Order workspace read with object-level authorization (§13.3): participants see their
+ * own orders; admins can read any order (read-only). Everyone else gets null → 404.
+ */
+export async function getOrder(id: string, viewer: Me, nowMs: number): Promise<{ order: OrderDetail; readOnly: boolean } | null> {
+  const order = buildMockOrders(nowMs).find((o) => o.id === id);
+  if (!order) return null;
+  if (order.viewerRole === roleFor(viewer.accountType) && !viewer.isAdmin) return { order, readOnly: false };
+  if (viewer.isAdmin) return { order, readOnly: true };
+  return null;
 }
 
 /** Orders awaiting admin arbitration (ORD-14). */

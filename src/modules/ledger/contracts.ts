@@ -9,6 +9,13 @@ export const walletSummarySchema = z.object({
 });
 export type WalletSummary = z.infer<typeof walletSummarySchema>;
 
+/** Client wallet (client accounts never earn, so they have no pending/earnings buckets). */
+export interface ClientWalletSummary {
+  available: number;
+  inEscrow: number;
+  totalSpent: number;
+}
+
 /** Appendix B `LedgerEntryType`. */
 export const LEDGER_ENTRY_TYPES = [
   "TOP_UP",

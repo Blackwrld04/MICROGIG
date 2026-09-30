@@ -6,7 +6,8 @@ import { ORDER_TABS, type OrderTab } from "@/lib/constants/order-status";
 import { formatCents } from "@/lib/money";
 import { formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { listOrders, type OrderRow } from "@/modules/orders/queries";
+import { requireUser } from "@/modules/auth/session";
+import { listOrders, roleFor, type OrderRow } from "@/modules/orders/queries";
 import type { ViewerRole } from "@/modules/orders/types";
 
 export const metadata: Metadata = { title: "Manage orders" };
@@ -14,8 +15,8 @@ export const metadata: Metadata = { title: "Manage orders" };
 type SearchParams = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-function href(role: ViewerRole, tab: OrderTab, q?: string) {
-  const p = new URLSearchParams({ role, tab });
+function href(tab: OrderTab, q?: string) {
+  const p = new URLSearchParams({ tab });
   if (q) p.set("q", q);
   return `/orders?${p.toString()}`;
 }
@@ -39,7 +40,8 @@ function DueCell({ row, role, now }: { row: OrderRow; role: ViewerRole; now: num
 
 /** Manage Orders — PRD §16.5, ORD-11 / ORD-12 / ORD-16. */
 export default async function ManageOrdersPage({ searchParams }: { searchParams: SearchParams }) {
-  const role: ViewerRole = one(searchParams.role) === "seller" ? "seller" : "buyer";
+  const user = await requireUser({ next: "/orders" });
+  const role: ViewerRole = roleFor(user.accountType);
   const tabParam = one(searchParams.tab);
   const tab: OrderTab = ORDER_TABS.some((t) => t.id === tabParam) ? (tabParam as OrderTab) : "priority";
   const q = one(searchParams.q)?.trim() || undefined;
@@ -50,29 +52,17 @@ export default async function ManageOrdersPage({ searchParams }: { searchParams:
   return (
     <div className="container space-y-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Manage orders</h1>
-        <nav aria-label="View as" className="inline-flex rounded-md border border-border p-1 text-sm">
-          {(["buyer", "seller"] as const).map((r) => (
-            <Link
-              key={r}
-              href={href(r, tab, q)}
-              aria-current={r === role ? "page" : undefined}
-              className={cn(
-                "rounded px-3 py-1.5 font-semibold capitalize",
-                r === role ? "bg-heading text-white" : "text-heading hover:bg-surface",
-              )}
-            >
-              {r === "buyer" ? "Buying" : "Selling"}
-            </Link>
-          ))}
-        </nav>
+        <h1 className="text-2xl font-bold">{role === "buyer" ? "My orders" : "Orders to deliver"}</h1>
+        <p className="text-sm text-muted-foreground">
+          {role === "buyer" ? "Gigs you've ordered" : "Orders from your clients"}
+        </p>
       </div>
 
       <nav aria-label="Order tabs" className="flex overflow-x-auto border-b border-border">
         {ORDER_TABS.map((t) => (
           <Link
             key={t.id}
-            href={href(role, t.id, q)}
+            href={href(t.id, q)}
             aria-current={t.id === tab ? "page" : undefined}
             className={cn(
               "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold",
@@ -88,8 +78,7 @@ export default async function ManageOrdersPage({ searchParams }: { searchParams:
       </nav>
 
       <form action="/orders" method="get" role="search" className="max-w-md">
-        <input type="hidden" name="role" value={role} />
-        <input type="hidden" name="tab" value={tab} />
+                <input type="hidden" name="tab" value={tab} />
         <label htmlFor="order-search" className="sr-only">
           Search orders
         </label>
@@ -131,7 +120,7 @@ export default async function ManageOrdersPage({ searchParams }: { searchParams:
           {/* Desktop table */}
           <table className="hidden w-full text-left text-sm md:table">
             <caption className="sr-only">
-              {ORDER_TABS.find((t) => t.id === tab)?.label} orders, {role === "buyer" ? "buying" : "selling"}
+              {ORDER_TABS.find((t) => t.id === tab)?.label} orders
             </caption>
             <thead className="border-b border-border text-xs uppercase text-muted-foreground">
               <tr>

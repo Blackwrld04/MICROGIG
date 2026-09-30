@@ -14,7 +14,7 @@ import { findCategory } from "@/lib/constants/categories";
 import { formatDate } from "@/lib/time";
 import { getCurrentUser } from "@/modules/auth/session";
 import { getGigBySlug, getMoreFromSeller } from "@/modules/catalog/queries";
-import { getWallet } from "@/modules/ledger/queries";
+import { getAvailableBalance } from "@/modules/ledger/queries";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const gig = await getGigBySlug(params.slug);
@@ -27,10 +27,19 @@ export default async function GigDetailPage({ params }: { params: { slug: string
   if (!gig) notFound();
 
   const now = Date.now();
-  const [more, user, wallet] = await Promise.all([getMoreFromSeller(gig.id), getCurrentUser(), getWallet(now)]);
+  const [more, user] = await Promise.all([getMoreFromSeller(gig.id), getCurrentUser()]);
+  const balance = user ? await getAvailableBalance(user.accountType, now) : 0;
   const category = findCategory(gig.category);
   const subcategory = category?.subcategories.find((s) => s.slug === gig.subcategory);
-  const isOwnGig = user?.fullName === gig.sellerCard.displayName;
+  const viewer = !user
+    ? "guest"
+    : user.isAdmin
+      ? "admin"
+      : user.accountType === "CLIENT"
+        ? "client"
+        : user.fullName === gig.sellerCard.displayName
+          ? "own"
+          : "freelancer";
 
   return (
     <div className="container py-8">
@@ -93,8 +102,9 @@ export default async function GigDetailPage({ params }: { params: { slug: string
               turnaroundHours={gig.turnaroundHours}
               revisionsIncluded={gig.revisionsIncluded}
               requirementsPrompt={gig.requirementsPrompt}
-              walletAvailableCents={wallet.summary.available}
-              isOwnGig={isOwnGig}
+              walletAvailableCents={balance}
+              viewer={viewer}
+            gigPath={`/gigs/${gig.slug}`}
             />
           </div>
 
@@ -173,8 +183,9 @@ export default async function GigDetailPage({ params }: { params: { slug: string
             turnaroundHours={gig.turnaroundHours}
             revisionsIncluded={gig.revisionsIncluded}
             requirementsPrompt={gig.requirementsPrompt}
-            walletAvailableCents={wallet.summary.available}
-            isOwnGig={isOwnGig}
+            walletAvailableCents={balance}
+            viewer={viewer}
+            gigPath={`/gigs/${gig.slug}`}
           />
         </aside>
       </div>

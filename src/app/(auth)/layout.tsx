@@ -5,7 +5,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-surface">
       <header className="container flex h-16 items-center">
-        <Link href="/gigs" aria-label="microgig home">
+        <Link href="/" aria-label="microgig home">
           <Logo />
         </Link>
       </header>

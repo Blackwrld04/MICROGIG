@@ -8,40 +8,38 @@ const COLUMNS = [
     links: CATEGORIES.map((c) => ({ href: `/categories/${c.slug}`, label: c.name })),
   },
   {
-    title: "Buying",
+    title: "For clients",
     links: [
       { href: "/gigs", label: "Browse gigs" },
-      { href: "/orders", label: "Manage orders" },
-      { href: "/inbox", label: "Inbox" },
-      { href: "/wallet", label: "Wallet" },
+      { href: "/#how-it-works", label: "How it works" },
+      { href: "/register?role=client", label: "Sign up as a client" },
     ],
   },
   {
-    title: "Selling",
+    title: "For freelancers",
     links: [
+      { href: "/#for-freelancers", label: "Why sell on microgig" },
+      { href: "/register?role=freelancer", label: "Sign up as a freelancer" },
       { href: "/seller/dashboard", label: "Seller dashboard" },
-      { href: "/seller/profile", label: "Seller profile" },
-      { href: "/gigs/new", label: "Create a gig" },
     ],
   },
   {
-    title: "Account",
+    title: "Company",
     links: [
-      { href: "/settings/security", label: "Security" },
-      { href: "/settings/notifications", label: "Notifications" },
+      { href: "/#escrow", label: "Escrow protection" },
+      { href: "/#faq", label: "FAQ" },
       { href: "/login", label: "Sign in" },
-      { href: "/register", label: "Join" },
     ],
   },
 ];
 
 export function SiteFooter() {
   return (
-    <footer className="mt-16 border-t border-border bg-surface">
-      <div className="container grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-5">
+    <footer className="border-t border-border bg-surface">
+      <div className="container grid gap-8 py-12 sm:grid-cols-2 lg:grid-cols-5">
         <div className="space-y-3">
           <Logo />
-          <p className="text-sm text-muted-foreground">Fixed-price micro-gigs under $50, protected by escrow.</p>
+          <p className="text-sm text-muted-foreground">Fixed-price micro-gigs under $50, delivered in 24–48 hours, protected by escrow.</p>
         </div>
         {COLUMNS.map((col) => (
           <nav key={col.title} aria-label={col.title}>
@@ -57,6 +55,9 @@ export function SiteFooter() {
             </ul>
           </nav>
         ))}
+      </div>
+      <div className="border-t border-border">
+        <p className="container py-4 text-xs text-muted-foreground">© 2026 microgig. Payments are simulated during the prototype phase.</p>
       </div>
     </footer>
   );

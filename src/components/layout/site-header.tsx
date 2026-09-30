@@ -34,30 +34,37 @@ function SearchForm({ className }: { className?: string }) {
   );
 }
 
-/** Global header — PRD §16.1: logo, search, bell, avatar menu, category bar. */
+const NAV_LINK = "hidden px-2 text-sm font-semibold text-heading hover:underline lg:block";
+
+/** Global header — PRD §16.1. Links depend on the account type (client XOR freelancer). */
 export async function SiteHeader() {
   const user = await getCurrentUser();
   const now = Date.now();
-  const { notifications } = user ? await getNotifications(now) : { notifications: [] };
+  const { notifications } = user ? await getNotifications(user.accountType, now) : { notifications: [] };
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
       <div className="container flex h-16 items-center gap-4">
-        <Link href="/gigs" aria-label="microgig home" className="shrink-0">
+        <Link href="/" aria-label="microgig home" className="shrink-0">
           <Logo />
         </Link>
         <SearchForm className="hidden flex-1 md:block md:max-w-xl" />
         <nav aria-label="Account" className="ml-auto flex items-center gap-2">
           {user ? (
             <>
-              <Link href="/orders" className="hidden px-2 text-sm font-semibold text-heading hover:underline lg:block">
+              {user.accountType === "FREELANCER" ? (
+                <Link href="/seller/dashboard" className={NAV_LINK}>
+                  Dashboard
+                </Link>
+              ) : null}
+              <Link href="/orders" className={NAV_LINK}>
                 Orders
               </Link>
-              <Link href="/inbox" className="hidden px-2 text-sm font-semibold text-heading hover:underline lg:block">
+              <Link href="/inbox" className={NAV_LINK}>
                 Inbox
               </Link>
-              <Link href="/wallet" className="hidden px-2 text-sm font-semibold text-heading hover:underline lg:block">
-                Wallet
+              <Link href="/wallet" className={NAV_LINK}>
+                {user.accountType === "FREELANCER" ? "Earnings" : "Wallet"}
               </Link>
               <NotificationBell initial={notifications} serverNow={now} />
               <UserMenu user={user} />
@@ -67,8 +74,8 @@ export async function SiteHeader() {
               <Button asChild variant="ghost" size="sm">
                 <Link href="/login">Sign in</Link>
               </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/register">Join</Link>
+              <Button asChild size="sm">
+                <Link href="/register">Get started</Link>
               </Button>
             </>
           )}

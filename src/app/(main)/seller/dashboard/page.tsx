@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { requireUser } from "@/modules/auth/session";
 import { getSellerDashboard } from "@/modules/seller/queries";
 
 export const metadata: Metadata = { title: "Seller dashboard" };
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 /** Seller dashboard & onboarding — PRD §16.6, SEL-02. */
 export default async function SellerDashboardPage() {
+  await requireUser({ next: "/seller/dashboard", accountType: "FREELANCER" });
   const { checklist, stats, gigs, activeOrders } = await getSellerDashboard(Date.now());
 
   const steps = [

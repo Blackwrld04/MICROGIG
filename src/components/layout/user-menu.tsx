@@ -13,10 +13,13 @@ import { Avatar } from "@/components/common/avatar";
 import { api } from "@/lib/api/client";
 import type { Me } from "@/modules/auth/contracts";
 
+/** Account menu. Clients and freelancers see only their own side — there is no role switch. */
 export function UserMenu({ user }: { user: Me }) {
+  const freelancer = user.accountType === "FREELANCER";
+
   async function logout() {
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
-    window.location.assign("/login");
+    window.location.assign("/");
   }
 
   return (
@@ -25,29 +28,39 @@ export function UserMenu({ user }: { user: Me }) {
         <Avatar name={user.fullName} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{user.fullName}</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          <span className="block text-sm text-heading">{user.fullName}</span>
+          <span className="font-normal">{user.isAdmin ? "Administrator" : freelancer ? "Freelancer account" : "Client account"}</span>
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/orders">Manage orders</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/inbox">Inbox</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/wallet">Wallet</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/seller/dashboard">{user.isSeller ? "Seller dashboard" : "Become a seller"}</Link>
-        </DropdownMenuItem>
-        {user.isSeller ? (
-          <DropdownMenuItem asChild>
-            <Link href="/gigs/new">Create a gig</Link>
-          </DropdownMenuItem>
+        {freelancer ? (
+          <>
+            <DropdownMenuItem asChild>
+              <Link href="/seller/dashboard">Seller dashboard</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/gigs/new">Create a gig</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/seller/profile">Seller profile</Link>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {!user.isAdmin ? (
+          <>
+            <DropdownMenuItem asChild>
+              <Link href="/orders">{freelancer ? "Orders to deliver" : "My orders"}</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/inbox">Inbox</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/wallet">{freelancer ? "Earnings" : "Wallet"}</Link>
+            </DropdownMenuItem>
+          </>
         ) : null}
         {user.isAdmin ? (
           <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Admin</DropdownMenuLabel>
             <DropdownMenuItem asChild>
               <Link href="/admin/verifications">ID verifications</Link>
             </DropdownMenuItem>

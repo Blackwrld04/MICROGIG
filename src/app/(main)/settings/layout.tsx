@@ -1,8 +1,10 @@
 import { SectionNav } from "@/components/layout/section-nav";
+import { requireUser } from "@/modules/auth/session";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
+  await requireUser({ next: "/settings/security" });
   return (
     <div className="container grid gap-8 py-8 md:grid-cols-[200px_1fr]">
       <div className="space-y-3">

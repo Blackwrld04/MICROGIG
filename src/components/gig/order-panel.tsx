@@ -23,14 +23,17 @@ export function OrderPanel({
   revisionsIncluded,
   requirementsPrompt,
   walletAvailableCents,
-  isOwnGig,
+  viewer,
+  gigPath,
 }: {
   priceCents: number;
   turnaroundHours: number;
   revisionsIncluded: number;
   requirementsPrompt: string[];
   walletAvailableCents: number;
-  isOwnGig: boolean;
+  /** Only clients can order; accounts are client XOR freelancer. */
+  viewer: "guest" | "client" | "freelancer" | "own" | "admin";
+  gigPath: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -80,13 +83,21 @@ export function OrderPanel({
         </ul>
       </div>
 
-      {isOwnGig ? (
+      {viewer === "own" ? (
         <div className="mt-5 space-y-2">
-          <Alert variant="info">This is your gig. Buyers see the order button here.</Alert>
+          <Alert variant="info">This is your gig. Clients see the order button here.</Alert>
           <Button asChild variant="outline" className="w-full">
             <Link href="/seller/dashboard">Manage in seller dashboard</Link>
           </Button>
         </div>
+      ) : viewer === "freelancer" || viewer === "admin" ? (
+        <Alert variant="info" className="mt-5">
+          {viewer === "admin" ? "Admin accounts can't place orders." : "Freelancer accounts sell gigs and can't place orders."}
+        </Alert>
+      ) : viewer === "guest" ? (
+        <Button asChild size="lg" className="mt-5 w-full">
+          <Link href={`/register?role=client&next=${encodeURIComponent(gigPath)}`}>Sign up to order ({formatCents(priceCents)})</Link>
+        </Button>
       ) : (
         <Button size="lg" className="mt-5 w-full" onClick={openCheckout}>
           Order Now &amp; Lock Escrow ({formatCents(priceCents)})

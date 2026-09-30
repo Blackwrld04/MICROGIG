@@ -1,15 +1,38 @@
 import type { Me } from "@/modules/auth/contracts";
 import type { SellerCard } from "@/modules/catalog/contracts";
 
-/** Demo viewer: buyer, verified seller and admin, so every screen is reachable. */
-export const MOCK_ME: Me = {
-  id: "00000000-0000-4000-8000-000000000001",
-  email: "alex@example.com",
-  fullName: "Alex Chen",
-  isAdmin: true,
-  isSeller: true,
+/**
+ * Demo accounts (any password works in demo mode). Accounts are client XOR freelancer.
+ * The client owns the buyer-side fixture orders, the freelancer owns Alex Chen's gigs.
+ */
+export const DEMO_USERS: Record<"client" | "freelancer" | "admin", Me> = {
+  client: {
+    id: "00000000-0000-4000-8000-000000000011",
+    email: "alice@example.com",
+    fullName: "Alice Morgan",
+    accountType: "CLIENT",
+    isAdmin: false,
+    isSeller: false,
+  },
+  freelancer: {
+    id: "00000000-0000-4000-8000-000000000012",
+    email: "alex@example.com",
+    fullName: "Alex Chen",
+    accountType: "FREELANCER",
+    isAdmin: false,
+    isSeller: true,
+  },
+  admin: {
+    id: "00000000-0000-4000-8000-000000000013",
+    email: "admin@microgig.dev",
+    fullName: "Marcus Reid",
+    accountType: "CLIENT",
+    isAdmin: true,
+    isSeller: false,
+  },
 };
 
+export const DEMO_CLIENT_NAME = DEMO_USERS.client.fullName;
 export const MOCK_ME_SELLER_ID = "s-alex";
 
 const H = 60 * 60 * 1000;
