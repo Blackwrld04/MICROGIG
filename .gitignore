@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# microgig monorepo — applies to apps/web, apps/api and anything else.
+# ---------------------------------------------------------------------------
+
+# dependencies (every app has its own node_modules)
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# secrets: NEVER commit real credentials. Only the template is tracked.
+.env
+.env.*
+!.env.example
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# builds
+build/
+dist/
+
+# testing
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# deploy tooling
+.vercel
