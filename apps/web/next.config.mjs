@@ -5,22 +5,32 @@ import nextEnv from "@next/env";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // All credentials live in ONE .env at the repo root (see /.env.example). Locally, load it before
-// Next reads apps/web/.env*. On Vercel the file doesn't exist and dashboard variables are used.
+try {
+  process.loadEnvFile(path.resolve(here, "../../.env"));
+} catch {}
 nextEnv.loadEnvConfig(path.resolve(here, "../.."), process.env.NODE_ENV !== "production");
 
 const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
 const apiUrl = (process.env.API_URL ?? "").replace(/\/+$/, "");
 
+console.log(">>> NEXT CONFIG: useMocks =", useMocks, "apiUrl =", apiUrl);
+
 if (!useMocks && !apiUrl) {
   throw new Error('API_URL must be set when NEXT_PUBLIC_USE_MOCKS="false" (see .env.example).');
 }
 
-/** Allow next/image to optimise gig images from the public bucket (NEXT_PUBLIC_ASSETS_URL). */
+/** Allow next/image to optimise gig images from Unsplash and the public bucket (NEXT_PUBLIC_ASSETS_URL). */
 function remotePatterns() {
+  const patterns = [
+    { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
+  ];
   const raw = process.env.NEXT_PUBLIC_ASSETS_URL;
-  if (!raw) return [];
-  const url = new URL(raw);
-  return [{ protocol: url.protocol.replace(":", ""), hostname: url.hostname, pathname: "/**" }];
+  if (!raw) return patterns;
+  try {
+    const url = new URL(raw);
+    patterns.push({ protocol: url.protocol.replace(":", ""), hostname: url.hostname, pathname: "/**" });
+  } catch {}
+  return patterns;
 }
 
 // Appendix E: security headers. (A CSP needs per-request nonces with Next inline scripts; add with the backend.)

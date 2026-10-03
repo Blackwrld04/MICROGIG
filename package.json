@@ -6,11 +6,15 @@
     "setup": "npm --prefix apps/web install && npm --prefix apps/api install",
     "dev": "npm --prefix apps/web run dev",
     "dev:api": "npm --prefix apps/api run dev",
-    "build": "npm --prefix apps/web run build",
+    "build": "npm --prefix apps/web run build && npm --prefix apps/api run build",
     "start": "npm --prefix apps/web run start",
     "lint": "npm --prefix apps/web run lint",
-    "typecheck": "npm --prefix apps/web run typecheck",
+    "typecheck": "npm --prefix apps/web run typecheck && npm --prefix apps/api run typecheck",
     "test": "npm --prefix apps/web run test",
-    "test:e2e": "npm --prefix apps/web run test:e2e"
+    "test:e2e": "npm --prefix apps/web run test:e2e",
+    "db:generate": "npm --prefix apps/api run db:generate",
+    "db:push": "npm --prefix apps/api run db:push",
+    "db:migrate": "npm --prefix apps/api run db:migrate",
+    "db:seed": "npm --prefix apps/api run db:seed"
   }
 }
