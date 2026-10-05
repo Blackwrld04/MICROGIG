@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
+import { useChangeKey } from "@/components/motion/use-motion";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -134,6 +135,8 @@ function Workspace({ order, readOnly, serverNow }: { order: OrderDetail; readOnl
     onError: () => toast("Your message was not sent. Please try again.", "danger"),
   });
 
+  const statusKey = useChangeKey(order.status); // pop the badge when the order moves on
+  const starKey = useChangeKey(order.isStarred);
   const role = order.viewerRole;
   const actions = readOnly ? [] : availableActions(order, role, now);
   const can = (a: ActionPayload["type"]) => actions.includes(a);
@@ -173,7 +176,11 @@ function Workspace({ order, readOnly, serverNow }: { order: OrderDetail; readOnl
                 onClick={() => star.mutate()}
                 className="rounded p-1 hover:bg-surface"
               >
-                <Star className={cn("h-5 w-5 text-heading", order.isStarred && "fill-heading")} aria-hidden />
+                <Star
+                  key={starKey}
+                  className={cn("h-5 w-5 text-heading", order.isStarred && "fill-heading", starKey > 0 && order.isStarred && "anim-pop")}
+                  aria-hidden
+                />
               </button>
               )}
             </h1>
@@ -188,7 +195,7 @@ function Workspace({ order, readOnly, serverNow }: { order: OrderDetail; readOnl
           </div>
           <div className="space-y-2 text-right">
             <div className="flex flex-wrap justify-end gap-1">
-              <OrderStatusBadge status={order.status} />
+              <OrderStatusBadge key={statusKey} status={order.status} className={statusKey > 0 ? "anim-pop" : undefined} />
               {late ? <LateBadge /> : null}
             </div>
             {countdown ? (

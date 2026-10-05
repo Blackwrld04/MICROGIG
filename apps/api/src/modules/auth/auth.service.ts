@@ -112,11 +112,18 @@ export async function createSession(
   return { sessionId, user };
 }
 
-export async function revokeSession(sessionId: string) {
-  await db
+export async function revokeSession(sessionId: string, userId?: string): Promise<boolean> {
+  const whereClause = userId
+    ? and(eq(sessions.id, sessionId), eq(sessions.userId, userId))
+    : eq(sessions.id, sessionId);
+
+  const updated = await db
     .update(sessions)
     .set({ revokedAt: new Date() })
-    .where(eq(sessions.id, sessionId));
+    .where(whereClause)
+    .returning({ id: sessions.id });
+
+  return updated.length > 0;
 }
 
 export async function revokeAllSessions(userId: string, exceptSessionId?: string) {

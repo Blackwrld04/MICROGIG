@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Plus } from "lucide-react";
+import { AnimatedNumber } from "@/components/motion/animated-number";
+import { useNewIds } from "@/components/motion/use-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -71,11 +73,12 @@ export function WalletView() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [amountError, setAmountError] = useState<string>();
+  const freshRows = useNewIds(wallet?.activity.map((r) => r.txnId) ?? []); // highlight new ledger rows
 
   const move = useMutation({
     mutationFn: async (m: { type: "TOP_UP" | "WITHDRAWAL"; amountCents: number }) => {
       if (!USE_MOCKS) {
-        await api(m.type === "TOP_UP" ? "/wallet/top-up" : "/wallet/withdraw", { method: "POST", body: { amountCents: Math.abs(m.amountCents) } });
+        await api(m.type === "TOP_UP" ? "/wallet/topup" : "/wallet/withdraw", { method: "POST", body: { amountCents: Math.abs(m.amountCents) } });
       }
       return m;
     },
@@ -141,7 +144,9 @@ export function WalletView() {
           <li key={c.label}>
             <Card className="h-full p-5">
               <p className="text-sm text-muted-foreground">{c.label}</p>
-              <p className="mt-1 text-2xl font-bold text-heading">{formatCents(c.value)}</p>
+              <p className="mt-1 text-2xl font-bold text-heading">
+                <AnimatedNumber value={c.value} format={formatCents} />
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">{c.note}</p>
             </Card>
           </li>
@@ -209,7 +214,7 @@ export function WalletView() {
             </thead>
             <tbody className="divide-y divide-border">
               {activity.map((r) => (
-                <tr key={r.txnId}>
+                <tr key={r.txnId} className={freshRows.has(r.txnId) ? "anim-flash" : undefined}>
                   <td className="whitespace-nowrap px-4 py-3">{formatDate(r.createdAt)}</td>
                   <td className="px-4 py-3 font-mono text-xs">{r.txnId}</td>
                   <td className="px-4 py-3">{r.description}</td>

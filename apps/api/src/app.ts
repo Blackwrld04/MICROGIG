@@ -3,7 +3,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { env } from "./env.js";
-import { errorHandler } from "./errors.js";
+import { errorHandler, notFound } from "./errors.js";
 import { getRedisClient } from "./lib/redis.js";
 import authenticatePlugin, {
   requireAuth,
@@ -92,7 +92,8 @@ export async function buildApp() {
 
       instance.delete<{ Params: { id: string } }>("/sessions/:id", async (req, reply) => {
         const user = requireAuth(req);
-        await revokeSession(req.params.id);
+        const revoked = await revokeSession(req.params.id, user.id);
+        if (!revoked) throw notFound("Session not found");
         if (req.params.id === user.sessionId) clearSessionCookie(reply);
         return reply.status(204).send();
       });

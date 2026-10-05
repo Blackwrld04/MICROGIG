@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Paperclip, Send } from "lucide-react";
+import { useNewIds } from "@/components/motion/use-motion";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,6 +53,11 @@ export function MessageThread({
     setConfirmLeak(false);
   }
 
+  // Identify by sender + text, not id: an optimistic message is later replaced by the server copy
+  // with a new id, and it should only animate in once.
+  const identity = (m: OrderMessage) => `${m.senderRole}:${m.body}:${m.attachmentName ?? ""}`;
+  const fresh = useNewIds(messages.map(identity));
+
   return (
     <div className="space-y-4">
       <Alert variant="warning">Keep payments and communication on the platform.</Alert>
@@ -61,7 +67,7 @@ export function MessageThread({
         {messages.map((m) => {
           const mine = m.senderRole === viewerRole;
           return (
-            <li key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+            <li key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start", fresh.has(identity(m)) && "anim-fade-up")}>
               <div className={cn("max-w-[80%] rounded-lg px-4 py-2.5 text-sm", mine ? "bg-heading text-white" : "bg-surface text-heading")}>
                 <p className="text-xs font-semibold opacity-90">{mine ? "You" : m.senderName}</p>
                 {m.body ? <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p> : null}

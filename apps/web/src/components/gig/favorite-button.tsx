@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
+import { useChangeKey } from "@/components/motion/use-motion";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { USE_MOCKS } from "@/mocks/config";
@@ -29,6 +30,7 @@ export function FavoriteButton({
   const router = useRouter();
   const [favorited, setFavorited] = useState(initialFavorited);
   const [count, setCount] = useState(initialCount);
+  const popKey = useChangeKey(favorited); // replay the heart pop on each toggle
 
   const toggle = useMutation({
     mutationFn: async () => {
@@ -63,10 +65,14 @@ export function FavoriteButton({
       aria-label={favorited ? "Remove from favorites" : "Save to favorites"}
       disabled={toggle.isPending}
       onClick={() => (signedIn ? toggle.mutate() : router.push(`/login?next=${encodeURIComponent(returnTo)}`))}
-      className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold text-heading hover:bg-surface"
+      className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold text-heading transition-[background-color,transform] duration-150 hover:bg-surface motion-safe:active:scale-95"
     >
-      <Heart className={cn("h-4 w-4", favorited && "fill-red-600 text-red-600")} aria-hidden />
-      {count}
+      <Heart
+        key={popKey}
+        className={cn("h-4 w-4 transition-colors", favorited && "fill-red-600 text-red-600", popKey > 0 && favorited && "anim-pop")}
+        aria-hidden
+      />
+      <span className="tabular-nums">{count}</span>
     </button>
   );
 }

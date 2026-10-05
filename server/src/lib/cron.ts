@@ -81,7 +81,7 @@ export function startReconcilerCron(log: FastifyBaseLogger) {
           o.fee_rate_bps
         FROM orders o
         WHERE o.status = 'COMPLETED'
-          AND o.completed_at <= ${clearingCutoff}
+          AND o.completed_at <= ${clearingCutoff.toISOString()}
           AND NOT EXISTS (
             SELECT 1
             FROM ledger_entries le

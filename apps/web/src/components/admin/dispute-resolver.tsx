@@ -19,6 +19,9 @@ import type { OrderDetail } from "@/modules/orders/types";
 
 type Outcome = "REFUND" | "RELEASE" | "SPLIT";
 
+/** Backend ruling names: who the escrow goes to. */
+const RULING: Record<Outcome, "BUYER" | "SELLER" | "SPLIT"> = { REFUND: "BUYER", RELEASE: "SELLER", SPLIT: "SPLIT" };
+
 /**
  * Dispute arbitration — ORD-14, T-10 (release), T-11 (refund), T-12 (split).
  * TODO: admin resolve endpoint (not yet in §12).
@@ -62,7 +65,12 @@ function DisputeResolver({ order }: { order: OrderDetail }) {
   const resolveDispute = useMutation({
     mutationFn: async (decision: { outcome: Outcome; buyerRefundBps: number; notes: string }) => {
       // TODO(orders owner): admin resolve endpoint isn't in PRD §12 yet (T-10 / T-11 / T-12).
-      if (!USE_MOCKS) await api(`/admin/disputes/${order.id}/resolve`, { method: "POST", body: decision });
+      if (!USE_MOCKS) {
+        await api(`/admin/disputes/${order.id}/resolve`, {
+          method: "POST",
+          body: { ruling: RULING[decision.outcome], buyerRefundBps: decision.buyerRefundBps, resolutionNotes: decision.notes },
+        });
+      }
     },
     onSuccess: () => {
       const summary =

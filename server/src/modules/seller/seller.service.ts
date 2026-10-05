@@ -18,7 +18,19 @@ export async function getSellerProfile(userId: string) {
     .where(eq(sellerProfiles.userId, userId))
     .limit(1);
 
-  if (!profile) throw notFound("Seller profile not found");
+  if (!profile) {
+    return {
+      profile: {
+        displayName: "",
+        headline:    "",
+        about:       "",
+        country:     "",
+        languages:   [],
+        skills:      [],
+      },
+      verification: "NOT_SUBMITTED",
+    };
+  }
 
   const skills = await db
     .select({ skillName: sellerSkills.skillName, level: sellerSkills.level })
@@ -111,10 +123,12 @@ export async function getSellerDashboardData(userId: string) {
 
   const [sellerRecord] = await db.select({ id: sellerProfiles.id }).from(sellerProfiles).where(eq(sellerProfiles.userId, userId)).limit(1);
 
-  const sellerGigs = await db
-    .select({ id: gigs.id, slug: gigs.slug, title: gigs.title, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, status: gigs.status, reviewCount: gigs.reviewCount, avgRating: gigs.avgRating, thumbnailUrl: gigs.thumbnailUrl })
-    .from(gigs)
-    .where(eq(gigs.sellerId, sellerRecord.id));
+  const sellerGigs = sellerRecord
+    ? await db
+        .select({ id: gigs.id, slug: gigs.slug, title: gigs.title, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, status: gigs.status, reviewCount: gigs.reviewCount, avgRating: gigs.avgRating, thumbnailUrl: gigs.thumbnailUrl })
+        .from(gigs)
+        .where(eq(gigs.sellerId, sellerRecord.id))
+    : [];
 
   const sellerOrders = await db
     .select({ id: orders.id, status: orders.status, priceCents: orders.priceCents })

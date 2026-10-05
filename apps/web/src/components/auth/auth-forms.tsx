@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { toMe } from "@/lib/api/adapters";
 import { ApiError, api } from "@/lib/api/client";
 import { fieldErrors } from "@/lib/form-errors";
 import { cn } from "@/lib/utils";
@@ -43,14 +44,9 @@ export function LoginForm({ next, showDemo }: { next?: string; showDemo: boolean
 
   const login = useMutation({
     mutationFn: (credentials: { email: string; password: string }) =>
-      api<{ user?: Me } & Partial<Me>>("/auth/login", { method: "POST", body: credentials }),
+      api<Me | { user: Me }>("/auth/login", { method: "POST", body: credentials }).then(toMe),
     onMutate: () => setFormError(undefined),
-    onSuccess: (data) => {
-      const user = data.user || (data.id && data.accountType ? (data as unknown as Me) : null);
-      if (!user) {
-        setFormError("Login failed. Please try again.");
-        return;
-      }
+    onSuccess: (user) => {
       queryClient.clear(); // never show the previous account's cached data
       router.push(safeNext(next) ?? homeFor(user));
       router.refresh();
@@ -151,17 +147,10 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
   const queryClient = useQueryClient();
-
   const register = useMutation({
-    mutationFn: (input: RegisterInput) =>
-      api<{ user?: Me } & Partial<Me>>("/auth/register", { method: "POST", body: input }),
+    mutationFn: (input: RegisterInput) => api<Me | { user: Me }>("/auth/register", { method: "POST", body: input }).then(toMe),
     onMutate: () => setFormError(undefined),
-    onSuccess: (data) => {
-      const user = data.user || (data.id && data.accountType ? (data as unknown as Me) : null);
-      if (!user) {
-        setFormError("Registration failed. Please try again.");
-        return;
-      }
+    onSuccess: (user) => {
       queryClient.clear();
       // A freelancer's `next` (e.g. a checkout link) doesn't apply: send them to onboarding.
       router.push(user.accountType === "CLIENT" ? (safeNext(next) ?? homeFor(user)) : homeFor(user));

@@ -23,9 +23,9 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
           fileSize: payload.delivery.fileSize,
           sha256: payload.delivery.sha256,
           kind: payload.delivery.kind,
-          storageKey: (payload.delivery as any).storageKey || (payload.delivery as any).fileKey,
-          fileKey: (payload.delivery as any).fileKey || (payload.delivery as any).storageKey,
-          fileTree: payload.delivery.fileTree,
+          storageKey: (payload.delivery as any).storageKey || (payload.delivery as any).fileKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
+          fileKey: (payload.delivery as any).fileKey || (payload.delivery as any).storageKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
+          fileTree: payload.delivery.fileTree ?? undefined,
         },
       });
     case "ACCEPT":
@@ -36,9 +36,9 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
       return api(`${base}/dispute`, { method: "POST", body: { reason: payload.reason }, idempotencyKey: newIdempotencyKey() });
     case "REQUEST_MUTUAL_CANCEL":
     case "ACCEPT_MUTUAL_CANCEL":
-      // Not in PRD §12: agree the path with the backend owner.
-      return api(`${base}/mutual-cancel`, { method: "POST", body: { accept: payload.type === "ACCEPT_MUTUAL_CANCEL" } });
+      // The backend's /cancel proposes a mutual cancel, or accepts the other party's proposal.
+      return api(`${base}/cancel`, { method: "POST", body: {} });
     case "LEAVE_REVIEW":
-      return api(`${base}/review`, { method: "POST", body: { rating: payload.rating, body: payload.body } });
+      return api(`${base}/review`, { method: "POST", body: { rating: payload.rating, body: payload.body ?? undefined } });
   }
 }

@@ -13,7 +13,6 @@ import type { SessionRow } from "@/mocks/account";
 
 /**
  * Active sessions + remote logout — AUTH-08.
- * TODO: DELETE /api/v1/me/sessions/:id and POST /api/v1/auth/logout-all.
  */
 export function SessionList() {
   const queryClient = useQueryClient();
@@ -22,9 +21,9 @@ export function SessionList() {
   const revoke = useMutation({
     mutationFn: async (target: SessionRow | "all") => {
       if (!USE_MOCKS) {
-        await (target === "all"
-          ? api("/auth/logout-all", { method: "POST" })
-          : api(`/me/sessions/${target.id}`, { method: "DELETE" }));
+        // Revoke each other session; the backend's DELETE /me/sessions would also end this one.
+        const ids = target === "all" ? sessions.filter((s) => !s.current).map((s) => s.id) : [target.id];
+        await Promise.all(ids.map((id) => api(`/me/sessions/${encodeURIComponent(id)}`, { method: "DELETE" })));
       }
       return target;
     },

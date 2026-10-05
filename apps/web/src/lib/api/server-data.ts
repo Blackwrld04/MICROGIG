@@ -12,6 +12,7 @@ import { listThreads } from "@/modules/messaging/queries";
 import { getNotifications } from "@/modules/notifications/queries";
 import { getOrder, listDisputedOrders, listOrders, roleFor } from "@/modules/orders/queries";
 import type { Me } from "@/modules/auth/contracts";
+import { EMPTY_DASHBOARD, EMPTY_SELLER_PROFILE, loadDisputes, or404, toSellerPage, toSessions } from "./adapters";
 import { ApiError, errorFromResponse } from "./errors";
 import type {
   DashboardResponse,
@@ -90,8 +91,10 @@ export const serverData = {
     return USE_MOCKS ? getMoreFromSeller(gigId) : (await backend<{ gigs: GigCard[] }>(`/gigs/${gigId}/more-from-seller`)).gigs;
   },
 
-  seller(id: string): Promise<SellerPageResponse | null> {
-    return USE_MOCKS ? getSellerPublicPage(id) : orNull(backend(`/sellers/${encodeURIComponent(id)}`));
+  async seller(id: string): Promise<SellerPageResponse | null> {
+    if (USE_MOCKS) return getSellerPublicPage(id);
+    const page = await orNull(backend<SellerPageResponse>(`/sellers/${encodeURIComponent(id)}`));
+    return page && toSellerPage(page);
   },
 
   async orders(tab: OrderTab, q: string | undefined): Promise<OrderListResponse> {
@@ -127,19 +130,19 @@ export const serverData = {
   },
 
   async dashboard(): Promise<DashboardResponse> {
-    if (!USE_MOCKS) return backend("/me/dashboard");
+    if (!USE_MOCKS) return or404(backend("/me/dashboard"), EMPTY_DASHBOARD);
     await viewer({ accountType: "FREELANCER" });
     return getSellerDashboard(Date.now());
   },
 
   async sellerProfile(): Promise<SellerProfileResponse> {
-    if (!USE_MOCKS) return backend("/me/seller-profile");
+    if (!USE_MOCKS) return or404(backend("/me/seller-profile"), EMPTY_SELLER_PROFILE);
     await viewer({ accountType: "FREELANCER" });
     return getMySellerProfile();
   },
 
   async sessions(): Promise<SessionRow[]> {
-    if (!USE_MOCKS) return (await backend<{ sessions: SessionRow[] }>("/me/sessions")).sessions;
+    if (!USE_MOCKS) return toSessions(await backend<SessionRow[] | { sessions: SessionRow[] }>("/me/sessions"));
     await viewer();
     return listSessions(Date.now());
   },
@@ -157,7 +160,7 @@ export const serverData = {
   },
 
   async disputes(): Promise<OrderDetail[]> {
-    if (!USE_MOCKS) return backend("/admin/disputes");
+    if (!USE_MOCKS) return loadDisputes(backend);
     await viewer({ admin: true });
     return listDisputedOrders(Date.now());
   },

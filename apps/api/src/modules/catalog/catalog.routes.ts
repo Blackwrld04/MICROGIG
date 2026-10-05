@@ -6,6 +6,7 @@ import {
   createGig,
   getMoreFromSeller,
   toggleGigFavorite,
+  updateGigStatus,
 } from "./catalog.service.js";
 import { requireAuth, requireRole } from "../../plugins/authenticate.js";
 import { notFound, unprocessable } from "../../errors.js";
@@ -87,5 +88,15 @@ export async function catalogRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const res = await toggleGigFavorite(user.id, id);
     return reply.send(res);
+  });
+
+  fastify.put("/gigs/:id", async (req, reply) => {
+    const user = requireRole(req, "FREELANCER");
+    const { id } = req.params as { id: string };
+    const schema = z.object({ status: z.enum(["PUBLISHED", "PAUSED"]) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) throw unprocessable("Invalid gig status");
+    const updated = await updateGigStatus(user.id, id, parsed.data.status);
+    return reply.send(updated);
   });
 }

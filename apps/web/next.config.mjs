@@ -4,11 +4,13 @@ import nextEnv from "@next/env";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// All credentials live in ONE .env at the repo root (see /.env.example). Locally, load it before
 try {
   process.loadEnvFile(path.resolve(here, "../../.env"));
 } catch {}
-nextEnv.loadEnvConfig(path.resolve(here, "../.."), process.env.NODE_ENV !== "production");
+// Next reads apps/web/.env*. On Vercel the file doesn't exist and dashboard variables are used.
+// forceReload: Next has already called loadEnvConfig for apps/web, and without it the cached result
+// is returned and the root file is never read.
+nextEnv.loadEnvConfig(path.resolve(here, "../.."), process.env.NODE_ENV !== "production", undefined, true);
 
 const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
 const apiUrl = (process.env.API_URL ?? "").replace(/\/+$/, "");

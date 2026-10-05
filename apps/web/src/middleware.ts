@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const SESSION_COOKIES = [
   "mg_demo_session", // demo mode
-  "sid", // real Fastify session cookie
+  "sid", // real Fastify session cookie (opaque session ID)
   "__Host-sid",
   "__Host-access_token", // real backend (§13.1), proxied through /api/v1 so it lands on this domain
   "__Host-refresh_token", // expired access token + valid refresh: let the page trigger a refresh

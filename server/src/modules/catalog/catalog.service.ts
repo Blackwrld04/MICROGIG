@@ -253,3 +253,16 @@ export async function toggleGigFavorite(userId: string, gigId: string) {
   const [updated] = await db.select({ favoriteCount: gigs.favoriteCount }).from(gigs).where(eq(gigs.id, gigId)).limit(1);
   return { isFavorited, count: updated?.favoriteCount ?? 0 };
 }
+
+export async function updateGigStatus(userId: string, gigId: string, status: "PUBLISHED" | "PAUSED") {
+  const [profile] = await db.select({ id: sellerProfiles.id }).from(sellerProfiles).where(eq(sellerProfiles.userId, userId)).limit(1);
+  if (!profile) throw forbidden("Not authorized");
+
+  const [gig] = await db.select({ id: gigs.id, sellerId: gigs.sellerId }).from(gigs).where(eq(gigs.id, gigId)).limit(1);
+  if (!gig) throw notFound("Gig not found");
+  if (gig.sellerId !== profile.id) throw forbidden("You do not own this gig");
+
+  await db.update(gigs).set({ status, updatedAt: new Date() }).where(eq(gigs.id, gigId));
+  return { id: gigId, status };
+}
+

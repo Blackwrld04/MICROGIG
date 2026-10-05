@@ -22,7 +22,7 @@ export function Toaster() {
         <div
           key={t.id}
           role={t.variant === "danger" ? "alert" : "status"}
-          className={cn("pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-md border p-4 text-sm shadow-lg", STYLES[t.variant])}
+          className={cn("anim-toast-in pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-md border p-4 text-sm shadow-lg", STYLES[t.variant])}
         >
           <p className="flex-1">{t.message}</p>
           <button type="button" onClick={() => dismiss(t.id)} aria-label="Dismiss notification" className="rounded p-0.5 hover:bg-black/5">
