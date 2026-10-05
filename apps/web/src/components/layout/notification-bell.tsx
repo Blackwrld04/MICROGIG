@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
@@ -44,6 +45,14 @@ export function NotificationBell({ serverNow }: { serverNow: number }) {
     onError: () => void queryClient.invalidateQueries({ queryKey: queryKeys.notifications }),
   });
   const unread = items.filter((n) => !n.read).length;
+
+  // Ring the bell only when unread goes UP after load (a new notification), not on mark-as-read.
+  const lastUnread = useRef<number | null>(null);
+  const [ringKey, setRingKey] = useState(0);
+  useEffect(() => {
+    if (lastUnread.current !== null && unread > lastUnread.current) setRingKey((k) => k + 1);
+    lastUnread.current = unread;
+  }, [unread]);
   const label = unread > 0 ? `Notifications, ${unread} unread` : "Notifications";
 
   return (
@@ -52,9 +61,9 @@ export function NotificationBell({ serverNow }: { serverNow: number }) {
         aria-label={label}
         className="relative flex h-10 w-10 items-center justify-center rounded-md text-heading hover:bg-surface"
       >
-        <Bell className="h-5 w-5" aria-hidden />
+        <Bell key={ringKey} className={cn("h-5 w-5", ringKey > 0 && "anim-wiggle")} aria-hidden />
         {unread > 0 ? (
-          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+          <span key={ringKey} className="anim-pop absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
             {unread > 9 ? "9+" : unread}
           </span>
         ) : null}

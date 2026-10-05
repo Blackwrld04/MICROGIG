@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function OrderStatusBadge({ status, className }: { status: OrderStatus; className?: string }) {
   const meta = ORDER_STATUS_META[status];
   return (
-    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold", meta.className, className)}>
+    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors duration-300", meta.className, className)}>
       {meta.label}
     </span>
   );

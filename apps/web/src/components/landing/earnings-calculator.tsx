@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AnimatedNumber } from "@/components/motion/animated-number";
 import { GIG_MAX_PRICE_CENTS, GIG_MIN_PRICE_CENTS, PLATFORM_FEE_BPS, formatCents, platformFeeCents, sellerNetCents } from "@/lib/money";
 
 /** Live "you earn" calculator using the real §11.5 fee maths. */
@@ -53,13 +54,15 @@ export function EarningsCalculator() {
       <dl className="grid grid-cols-2 gap-4 border-t border-white/15 pt-5">
         <div>
           <dt className="text-xs text-white/80">You earn per order</dt>
-          <dd className="text-2xl font-bold text-primary">{formatCents(net)}</dd>
+          <dd className="text-2xl font-bold text-primary">
+            <AnimatedNumber value={net} format={formatCents} durationMs={300} />
+          </dd>
           <dd className="text-xs text-white/80">after the {formatCents(platformFeeCents(price, PLATFORM_FEE_BPS))} fee</dd>
         </div>
         <div>
           <dt className="text-xs text-white/80">Per month (4 weeks)</dt>
           <dd className="text-2xl font-bold text-primary" aria-live="polite">
-            {formatCents(net * perWeek * 4)}
+            <AnimatedNumber value={net * perWeek * 4} format={formatCents} durationMs={300} />
           </dd>
         </div>
       </dl>

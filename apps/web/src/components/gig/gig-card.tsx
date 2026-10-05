@@ -8,15 +8,15 @@ import type { GigCard as GigCardData } from "@/modules/catalog/contracts";
 /** Catalog card — GIG-05, laid out per the §16.1 wireframe. */
 export function GigCard({ gig }: { gig: GigCardData }) {
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-background transition-shadow hover:shadow-md">
-      <div className="relative aspect-[4/3] bg-surface">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-background transition-[box-shadow,transform] duration-200 hover:shadow-lg focus-within:shadow-lg motion-safe:hover:-translate-y-1 motion-safe:focus-within:-translate-y-1">
+      <div className="relative aspect-[4/3] overflow-hidden bg-surface">
         {gig.thumbnailUrl ? (
           <Image
             src={gig.thumbnailUrl}
             alt=""
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-            className="object-cover"
+            className="object-cover transition-transform duration-500 ease-out motion-safe:group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-muted-foreground">

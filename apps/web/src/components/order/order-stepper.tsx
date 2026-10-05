@@ -1,4 +1,7 @@
+"use client";
+
 import { Check } from "lucide-react";
+import { useChangeKey } from "@/components/motion/use-motion";
 import { cn } from "@/lib/utils";
 import type { OrderDetail } from "@/modules/orders/types";
 
@@ -22,10 +25,15 @@ function currentIndex(order: OrderDetail): number {
   }
 }
 
-/** Order status stepper — ORD-03, §16.4. IN_REVISION loops back to "In progress". */
+/**
+ * Order status stepper — ORD-03, §16.4. IN_REVISION loops back to "In progress".
+ * Motion: connectors fill as the order advances, the current step pulses briefly, and a step
+ * that has just been completed pops its check mark (only on a live change, not on load).
+ */
 export function OrderStepper({ order }: { order: OrderDetail }) {
   const current = currentIndex(order);
   const frozen = order.status === "CANCELLED" || order.status === "DISPUTED";
+  const changeKey = useChangeKey(order.status);
 
   return (
     <ol className="flex items-center gap-2 overflow-x-auto text-sm" aria-label="Order progress">
@@ -39,8 +47,11 @@ export function OrderStepper({ order }: { order: OrderDetail }) {
         return (
           <li key={label} className="flex shrink-0 items-center gap-2" aria-current={active ? "step" : undefined}>
             <span
+              key={active || i === current - 1 ? changeKey : undefined}
               className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold",
+                "flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors duration-300",
+                active && "anim-ring",
+                changeKey > 0 && i === current - 1 && "anim-pop",
                 done && "border-heading bg-heading text-white",
                 active && "border-heading bg-primary text-primary-foreground",
                 !done && !active && "border-border text-muted-foreground",
@@ -52,7 +63,16 @@ export function OrderStepper({ order }: { order: OrderDetail }) {
               {text}
               <span className="sr-only">{done ? " (done)" : active ? " (current)" : ""}</span>
             </span>
-            {i < STEPS.length - 1 ? <span aria-hidden className="h-px w-6 bg-border md:w-10" /> : null}
+            {i < STEPS.length - 1 ? (
+              <span aria-hidden className="relative h-0.5 w-6 overflow-hidden rounded-full bg-border md:w-10">
+                <span
+                  className={cn(
+                    "absolute inset-y-0 left-0 bg-heading transition-[width] duration-700 ease-out",
+                    i < current ? "w-full" : "w-0",
+                  )}
+                />
+              </span>
+            ) : null}
           </li>
         );
       })}

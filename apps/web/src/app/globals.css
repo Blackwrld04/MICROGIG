@@ -22,3 +22,63 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
+
+/*
+ * Motion (purposeful, short, and only for users who haven't asked for reduced motion).
+ * Each animation marks a real change: new money, a new order state, a new message.
+ * Anything that repeats stops within 5 s (WCAG 2.2.2), so nothing loops forever.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes mg-fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes mg-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  @keyframes mg-wiggle {
+    0%, 100% { transform: rotate(0); }
+    20% { transform: rotate(-14deg); }
+    40% { transform: rotate(12deg); }
+    60% { transform: rotate(-8deg); }
+    80% { transform: rotate(4deg); }
+  }
+  @keyframes mg-flash {
+    from { background-color: rgb(29 191 115 / 0.18); }
+    to { background-color: transparent; }
+  }
+  @keyframes mg-ring {
+    from { box-shadow: 0 0 0 0 rgb(29 191 115 / 0.55); }
+    to { box-shadow: 0 0 0 8px rgb(29 191 115 / 0); }
+  }
+  @keyframes mg-ping {
+    75%, 100% { transform: scale(2.2); opacity: 0; }
+  }
+  @keyframes mg-toast-in {
+    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes mg-draw {
+    from { stroke-dashoffset: 24; }
+    to { stroke-dashoffset: 0; }
+  }
+
+  /* Page enter: opacity + translate only, `backwards` so no transform lingers afterwards. */
+  .anim-page { animation: mg-fade-up 280ms ease-out backwards; }
+  /* Staggered list items: set --i on each item. */
+  .anim-stagger { animation: mg-fade-up 360ms ease-out backwards; animation-delay: calc(min(var(--i, 0), 10) * 45ms); }
+  .anim-fade-up { animation: mg-fade-up 320ms ease-out backwards; }
+  .anim-pop { animation: mg-pop 360ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .anim-wiggle { animation: mg-wiggle 700ms ease-in-out; transform-origin: 50% 10%; }
+  .anim-flash { animation: mg-flash 2.4s ease-out; }
+  .anim-ring { animation: mg-ring 1.4s ease-out 3; }
+  .anim-ping { animation: mg-ping 1.5s cubic-bezier(0, 0, 0.2, 1) 3; }
+  .anim-toast-in { animation: mg-toast-in 240ms ease-out; }
+  .anim-draw { stroke-dasharray: 24; animation: mg-draw 400ms ease-out 120ms backwards; }
+
+  /* Scroll reveal (components/motion/reveal.tsx). Only ever hides content that is off-screen. */
+  [data-reveal] { transition: opacity 600ms ease-out, transform 600ms ease-out; }
+  [data-reveal="hidden"] { opacity: 0; transform: translateY(24px); }
+}

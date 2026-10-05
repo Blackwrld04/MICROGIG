@@ -12,8 +12,8 @@ export function GigGrid({ gigs }: { gigs: GigCardData[] }) {
   }
   return (
     <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {gigs.map((gig) => (
-        <li key={gig.id}>
+      {gigs.map((gig, i) => (
+        <li key={gig.id} className="anim-stagger" style={{ "--i": i } as React.CSSProperties}>
           <GigCard gig={gig} />
         </li>
       ))}

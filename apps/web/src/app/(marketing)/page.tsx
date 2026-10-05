@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { GigCard } from "@/components/gig/gig-card";
+import { Reveal } from "@/components/motion/reveal";
 import { EarningsCalculator } from "@/components/landing/earnings-calculator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
@@ -128,7 +129,7 @@ export default async function LandingPage() {
           className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_30rem_at_85%_-10%,rgba(29,191,115,0.18),transparent),radial-gradient(40rem_20rem_at_0%_110%,rgba(29,191,115,0.10),transparent)]"
         />
         <div className="container grid grid-cols-1 items-center gap-12 py-14 md:py-20 lg:grid-cols-[1.05fr_1fr]">
-          <div className="min-w-0">
+          <div className="anim-fade-up min-w-0">
             <p className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-heading">
               <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden />
               Fixed prices under $50 · Delivered in 24–48 hours
@@ -185,7 +186,7 @@ export default async function LandingPage() {
           </div>
 
           {/* Product collage */}
-          <div className="relative mx-auto w-full min-w-0 max-w-lg lg:max-w-none">
+          <div className="anim-stagger relative mx-auto w-full min-w-0 max-w-lg lg:max-w-none" style={{ "--i": 3 } as React.CSSProperties}>
             <div className="relative aspect-[4/3] overflow-hidden rounded-3xl shadow-2xl ring-1 ring-black/5">
               <Image
                 src="/images/gigs/icon-1.jpg"
@@ -234,6 +235,7 @@ export default async function LandingPage() {
 
       {/* ---------------------------------------------------------- Key facts */}
       <section aria-label="microgig at a glance" className="border-y border-border bg-surface">
+        <Reveal>
         <dl className="container grid grid-cols-2 gap-8 py-10 md:grid-cols-4">
           {[
             { k: "$5–$50", v: "One fixed price per gig" },
@@ -248,10 +250,12 @@ export default async function LandingPage() {
             </div>
           ))}
         </dl>
+        </Reveal>
       </section>
 
       {/* ------------------------------------------------------- How it works */}
       <section id="how-it-works" aria-labelledby="how-heading" className="scroll-mt-20 py-16 md:py-24">
+        <Reveal>
         <div className="container">
           <SectionHeading
             id="how-heading"
@@ -284,10 +288,12 @@ export default async function LandingPage() {
             </TabsContent>
           </Tabs>
         </div>
+        </Reveal>
       </section>
 
       {/* --------------------------------------------------------- Categories */}
       <section id="categories" aria-labelledby="categories-heading" className="scroll-mt-20 bg-surface py-16 md:py-24">
+        <Reveal>
         <div className="container">
           <SectionHeading id="categories-heading" eyebrow="Categories" title="Quick wins across six categories" />
           <ul className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -318,10 +324,12 @@ export default async function LandingPage() {
             ))}
           </ul>
         </div>
+        </Reveal>
       </section>
 
       {/* ----------------------------------------------------- Featured gigs */}
       <section aria-labelledby="featured-heading" className="py-16 md:py-24">
+        <Reveal>
         <div className="container">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -344,10 +352,12 @@ export default async function LandingPage() {
             ))}
           </ul>
         </div>
+        </Reveal>
       </section>
 
       {/* ------------------------------------------------------------ Escrow */}
       <section id="escrow" aria-labelledby="escrow-heading" className="scroll-mt-20 bg-heading py-20 text-white md:py-28">
+        <Reveal>
         <div className="container grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wider text-white/80">Escrow protection</p>
@@ -401,10 +411,12 @@ export default async function LandingPage() {
             ))}
           </ol>
         </div>
+        </Reveal>
       </section>
 
       {/* -------------------------------------------------------- Comparison */}
       <section aria-labelledby="compare-heading" className="py-16 md:py-24">
+        <Reveal>
         <div className="container">
           <SectionHeading
             id="compare-heading"
@@ -456,10 +468,12 @@ export default async function LandingPage() {
             </table>
           </div>
         </div>
+        </Reveal>
       </section>
 
       {/* ---------------------------------------------------- For freelancers */}
       <section id="for-freelancers" aria-labelledby="freelancers-heading" className="scroll-mt-20 bg-heading py-20 text-white md:py-28">
+        <Reveal>
         <div className="container grid gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wider text-white/80">For freelancers</p>
@@ -491,10 +505,12 @@ export default async function LandingPage() {
           </div>
           <EarningsCalculator />
         </div>
+        </Reveal>
       </section>
 
       {/* --------------------------------------------------------------- FAQ */}
       <section id="faq" aria-labelledby="faq-heading" className="scroll-mt-20 py-16 md:py-24">
+        <Reveal>
         <div className="container max-w-3xl">
           <SectionHeading id="faq-heading" eyebrow="FAQ" title="Questions, answered" />
           <Accordion type="single" collapsible className="mt-10">
@@ -506,10 +522,12 @@ export default async function LandingPage() {
             ))}
           </Accordion>
         </div>
+        </Reveal>
       </section>
 
       {/* --------------------------------------------------------- Final CTA */}
       <section aria-labelledby="cta-heading" className="pb-16 md:pb-20">
+        <Reveal>
         <div className="container">
           <div className="rounded-3xl bg-surface px-4 py-12 sm:px-6 md:px-14 md:py-14">
             <h2 id="cta-heading" className="text-center text-3xl font-bold tracking-tight md:text-4xl">
@@ -548,6 +566,7 @@ export default async function LandingPage() {
             </p>
           </div>
         </div>
+        </Reveal>
       </section>
     </>
   );
