@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   registerUser,
+  sendVerificationCode,
+  checkEmailAvailability,
   loginUser,
   revokeSession,
   revokeAllSessions,
@@ -14,7 +16,7 @@ import {
   clearSessionCookie,
 } from "../../plugins/authenticate.js";
 import { env } from "../../env.js";
-import { ApiError } from "../../errors.js";
+import { ApiError, notFound } from "../../errors.js";
 
 const passwordSchema = z
   .string()
@@ -29,6 +31,11 @@ const registerBody = z.object({
   email:    z.string().email("Enter a valid email"),
   password: passwordSchema,
   fullName: z.string().trim().min(1, "Enter your full name").max(120),
+  code:     z.string().trim().min(4, "Enter the confirmation code").max(10).optional(),
+});
+
+const sendCodeBody = z.object({
+  email: z.string().email("Enter a valid email"),
 });
 
 const loginBody = z.object({
@@ -38,6 +45,44 @@ const loginBody = z.object({
 
 export async function authRoutes(fastify: FastifyInstance) {
   const isProd = env.NODE_ENV === "production";
+
+  fastify.all("/check-email", {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: "1 minute",
+      },
+    },
+  }, async (req, reply) => {
+    const queryEmail = (req.query as Record<string, string>)?.email;
+    const bodyEmail = (req.body as Record<string, string>)?.email;
+    const rawEmail = (queryEmail || bodyEmail || "").trim();
+    const parsed = z.string().email().safeParse(rawEmail);
+    if (!parsed.success) {
+      return reply.send({ exists: false, message: "Invalid email" });
+    }
+    const result = await checkEmailAvailability(parsed.data);
+    return reply.send(result);
+  });
+
+  fastify.post("/send-code", {
+    config: {
+      rateLimit: {
+        max: 6,
+        timeWindow: "1 minute",
+      },
+    },
+  }, async (req, reply) => {
+    const parsed = sendCodeBody.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ApiError("Please enter a valid email.", 422, {
+        email: "Invalid email",
+      });
+    }
+
+    const res = await sendVerificationCode(parsed.data.email);
+    return reply.send(res);
+  });
 
   fastify.post("/register", {
     config: {
@@ -113,7 +158,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   fastify.post("/logout", async (req, reply) => {
     const user = requireAuth(req);
-    await revokeSession(user.sessionId);
+    await revokeSession(user.sessionId, user.id);
     clearSessionCookie(reply);
     return reply.status(204).send();
   });
@@ -140,7 +185,8 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.delete("/sessions/:id", async (req, reply) => {
     const user = requireAuth(req);
     const { id } = req.params as { id: string };
-    await revokeSession(id);
+    const revoked = await revokeSession(id, user.id);
+    if (!revoked) throw notFound("Session not found");
     if (id === user.sessionId) clearSessionCookie(reply);
     return reply.status(204).send();
   });

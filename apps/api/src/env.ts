@@ -36,9 +36,14 @@ const envSchema = z.object({
   S3_PRIVATE_BUCKET_NAME: z.string().default("microgig-deliverables-private"),
   STORAGE_PUBLIC_URL: z.string().optional(),
 
-  // Transactional Email
+  // Transactional Email (Resend or SMTP / Gmail)
   EMAIL_FROM: z.string().default("microgig <notifications@microgig.dev>"),
   RESEND_API_KEY: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.coerce.boolean().default(true),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -46,10 +51,11 @@ const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
   console.error("❌ Invalid environment variables:");
   console.error(parsed.error.flatten().fieldErrors);
-  // In development without .env, provide safe fallbacks if DATABASE_URL is not yet provided
-  if (process.env.NODE_ENV !== "production") {
-    console.warn("⚠️ Using fallback development environment variables.");
+  if (process.env.NODE_ENV === "production") {
+    console.error("💥 Fatal: Invalid environment configuration in production. Refusing to start.");
+    process.exit(1);
   }
+  console.warn("⚠️ Using fallback development environment variables.");
 }
 
 export const env = parsed.success
@@ -74,6 +80,11 @@ export const env = parsed.success
       STORAGE_PUBLIC_URL: process.env.STORAGE_PUBLIC_URL,
       EMAIL_FROM: process.env.EMAIL_FROM || "microgig <notifications@microgig.dev>",
       RESEND_API_KEY: process.env.RESEND_API_KEY,
+      SMTP_HOST: process.env.SMTP_HOST,
+      SMTP_PORT: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465,
+      SMTP_USER: process.env.SMTP_USER,
+      SMTP_PASS: process.env.SMTP_PASS,
+      SMTP_SECURE: process.env.SMTP_SECURE !== "false",
     };
 
 export type Env = typeof env;

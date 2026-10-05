@@ -27,11 +27,11 @@ const requirementsBody = z.object({
 });
 
 const deliveryBody = z.object({
-  fileName:   z.string().min(1).default("deliverable"),
-  fileSize:   z.number().int().min(0).optional(),
-  sha256:     z.string().optional(),
-  storageKey: z.string().optional(),
-  fileKey:    z.string().optional(),
+  fileName:   z.string().min(1, "File name is required"),
+  fileSize:   z.number().int().min(1, "File size must be greater than 0"),
+  sha256:     z.string().min(1, "sha256 hash is required"),
+  storageKey: z.string().min(1).optional(),
+  fileKey:    z.string().min(1).optional(),
   kind:       z.enum(["image", "archive", "document"]).optional(),
   fileTree:   z.array(z.string()).optional(),
   notes:      z.string().default(""),

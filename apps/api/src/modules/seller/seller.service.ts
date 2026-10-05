@@ -8,7 +8,7 @@ import {
   orders,
   reviews,
 } from "../../db/schema/index.js";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { notFound } from "../../errors.js";
 
 export async function getSellerProfile(userId: string) {
@@ -201,7 +201,7 @@ export async function getPublicSellerCard(sellerIdOrUserId: string) {
         })
         .from(reviews)
         .innerJoin(users, eq(reviews.buyerId, users.id))
-        .where(sql`${reviews.gigId} = ANY(${gigIds})`)
+        .where(inArray(reviews.gigId, gigIds))
         .orderBy(desc(reviews.createdAt))
         .limit(10)
     : [];

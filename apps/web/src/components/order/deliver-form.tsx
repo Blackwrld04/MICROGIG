@@ -63,32 +63,43 @@ export function DeliverForm({
 
     setUploading(true);
     try {
-      let fileKey: string | undefined;
-      try {
-        const presignRes = await fetch("/api/v1/deliveries/presign-upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type || "application/octet-stream",
-            fileSize: file.size,
-            orderId,
-          }),
-        });
-        if (presignRes.ok) {
-          const data = await presignRes.json();
-          fileKey = data.fileKey;
-          if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
-            await fetch(data.uploadUrl, {
-              method: "PUT",
-              headers: { "Content-Type": file.type || "application/octet-stream" },
-              body: file,
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("Storage upload skipped or failed, continuing with direct record:", err);
+      const presignRes = await fetch("/api/v1/deliveries/presign-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+          fileSize: file.size,
+          orderId,
+        }),
+      });
+
+      if (!presignRes.ok) {
+        const errData = await presignRes.json().catch(() => ({}));
+        const msg = errData?.error?.message || (presignRes.status === 503 ? "File storage not configured" : "Failed to prepare file upload");
+        setFileError(msg);
+        return;
       }
+
+      const data = await presignRes.json();
+      const fileKey = data.fileKey;
+
+      if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
+        const putRes = await fetch(data.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!putRes.ok) {
+          setFileError("Failed to upload file to storage server");
+          return;
+        }
+      }
+
+      const buf = await file.arrayBuffer();
+      const hashBuf = await crypto.subtle.digest("SHA-256", buf);
+      const hashArray = Array.from(new Uint8Array(hashBuf));
+      const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
       onDeliver({
         fileName: file.name,
@@ -97,9 +108,11 @@ export function DeliverForm({
         notes: notes.trim(),
         storageKey: fileKey,
         fileKey: fileKey,
-        sha256: "verified-client-upload",
+        sha256,
         fileTree: kind === "archive" ? ["(archive uploaded)"] : null,
       });
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : "File upload failed");
     } finally {
       setUploading(false);
     }

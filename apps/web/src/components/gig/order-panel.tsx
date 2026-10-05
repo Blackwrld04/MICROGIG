@@ -70,7 +70,7 @@ export function OrderPanel({
         idempotencyKey: idempotencyKey.current ?? newIdempotencyKey(),
       }).then((res) => ({ orderId: toOrderId(res) }));
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { orderId?: string; order?: { id?: string }; id?: string }) => {
       const orderId = data?.orderId || data?.order?.id || data?.id;
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
       void queryClient.invalidateQueries({ queryKey: ["orders"] });

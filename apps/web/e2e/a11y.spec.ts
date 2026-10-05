@@ -71,6 +71,7 @@ test("registering as a freelancer locks the account to the seller side", async (
   await page.getByLabel("Full name").fill("Jamie Rivera");
   await page.getByLabel("Email").fill(`jamie+${Date.now()}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill("secret-123!");
+  await page.getByLabel("Confirm password").fill("secret-123!");
   await page.getByRole("button", { name: "Create freelancer account" }).click();
   await expect(page).toHaveURL(/\/seller\/dashboard/, { timeout: 30_000 }); // first dev compile is slow
 

@@ -25,12 +25,18 @@ export const passwordSchema = z
   .regex(/\d/, "Include at least 1 number")
   .regex(/[^A-Za-z0-9]/, "Include at least 1 symbol");
 
+export const sendCodeSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+});
+export type SendCodeInput = z.infer<typeof sendCodeSchema>;
+
 /** POST /api/v1/auth/register */
 export const registerSchema = z.object({
   accountType: z.enum(ACCOUNT_TYPES, { errorMap: () => ({ message: "Choose client or freelancer" }) }),
   email: z.string().email("Enter a valid email"),
   password: passwordSchema,
   fullName: z.string().trim().min(1, "Enter your full name").max(120),
+  code: z.string().trim().min(4, "Enter the confirmation code").max(10).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 

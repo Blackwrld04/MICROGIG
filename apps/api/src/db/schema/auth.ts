@@ -22,9 +22,26 @@ export const users = pgTable("users", {
   fullName:     varchar("full_name", { length: 120 }).notNull(),
   accountType:  accountTypeEnum("account_type").notNull(),
   isAdmin:      boolean("is_admin").notNull().default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Email Verifications ───────────────────────────────────────────────────────
+
+export const emailVerifications = pgTable(
+  "email_verifications",
+  {
+    id:        text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    email:     varchar("email", { length: 255 }).notNull(),
+    code:      varchar("code", { length: 10 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    emailIdx: index("email_verifications_email_idx").on(t.email),
+  }),
+);
 
 // ── Sessions ─────────────────────────────────────────────────────────────────
 

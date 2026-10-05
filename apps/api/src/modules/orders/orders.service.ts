@@ -12,6 +12,7 @@ import { platformFeeCents, sellerNetCents, splitEscrow, assertZeroSum } from "..
 import { detectContactLeakage, LEAKAGE_WARNING } from "../../lib/leakage.js";
 import { settleOrderCompletion, getOrCreateLedgerAccount } from "../../lib/cron.js";
 import { createAndDispatchNotification } from "../notifications/notifications.service.js";
+import { verifyObjectExists } from "../storage/storage.service.js";
 import type { AuthUser } from "../../types/auth.js";
 
 const HOUR_MS                = 60 * 60 * 1000;
@@ -29,9 +30,20 @@ export function isOrderLate(order: { status: string; deadline: Date | null; revi
 
 export async function placeOrder(buyerId: string, gigId: string) {
   const [gig] = await db
-    .select({ id: gigs.id, title: gigs.title, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, revisionsIncluded: gigs.revisionsIncluded, requirementsPrompt: gigs.requirementsPrompt, sellerId: gigs.sellerId })
-    .from(gigs).where(eq(gigs.id, gigId)).limit(1);
-  if (!gig) throw notFound("Gig not found");
+    .select({
+      id: gigs.id,
+      title: gigs.title,
+      priceCents: gigs.priceCents,
+      turnaroundHours: gigs.turnaroundHours,
+      revisionsIncluded: gigs.revisionsIncluded,
+      requirementsPrompt: gigs.requirementsPrompt,
+      sellerId: gigs.sellerId,
+      status: gigs.status,
+    })
+    .from(gigs)
+    .where(and(eq(gigs.id, gigId), eq(gigs.status, "PUBLISHED")))
+    .limit(1);
+  if (!gig) throw notFound("Gig not found or is no longer available.");
 
   const [sellerProfile] = await db.select({ userId: sellerProfiles.userId }).from(sellerProfiles).where(eq(sellerProfiles.id, gig.sellerId)).limit(1);
   if (!sellerProfile) throw notFound("Seller profile not found");
@@ -45,8 +57,15 @@ export async function placeOrder(buyerId: string, gigId: string) {
     const buyerAccount  = await getOrCreateLedgerAccount(tx, buyerId,      "USER_AVAILABLE");
     const escrowAccount = await getOrCreateLedgerAccount(tx, "PLATFORM",   "ESCROW");
 
-    if (buyerAccount.balanceCents < gig.priceCents) {
-      throw paymentRequired(`Insufficient balance. Order total is $${(gig.priceCents / 100).toFixed(2)}, available is $${(buyerAccount.balanceCents / 100).toFixed(2)}.`);
+    const [lockedBuyerAccount] = await tx
+      .select({ id: ledgerAccounts.id, balanceCents: ledgerAccounts.balanceCents })
+      .from(ledgerAccounts)
+      .where(eq(ledgerAccounts.id, buyerAccount.id))
+      .for("update");
+
+    const currentBalance = lockedBuyerAccount?.balanceCents ?? buyerAccount.balanceCents;
+    if (currentBalance < gig.priceCents) {
+      throw paymentRequired(`Insufficient balance. Order total is $${(gig.priceCents / 100).toFixed(2)}, available is $${(currentBalance / 100).toFixed(2)}.`);
     }
 
     const legs = [
@@ -248,7 +267,28 @@ export async function submitDelivery(
   const sequenceNo  = existing.length + 1;
   const autoCompleteAt = new Date(Date.now() + AUTO_COMPLETE_HOURS * HOUR_MS);
 
-  const storageKey = deliveryData.storageKey || deliveryData.fileKey || `deliveries/${orderId}/${crypto.randomUUID()}/${deliveryData.fileName}`;
+  const storageKey = deliveryData.storageKey || deliveryData.fileKey;
+  if (!storageKey || !storageKey.startsWith(`deliveries/${orderId}/`)) {
+    throw unprocessable(`storageKey must begin with deliveries/${orderId}/`);
+  }
+
+  if (!deliveryData.fileName || typeof deliveryData.fileName !== "string") {
+    throw unprocessable("fileName is required");
+  }
+  if (!deliveryData.fileSize || deliveryData.fileSize <= 0) {
+    throw unprocessable("Valid fileSize is required");
+  }
+  if (!deliveryData.sha256 || deliveryData.sha256 === "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") {
+    throw unprocessable("Valid sha256 hash is required");
+  }
+  const validFileSize: number = deliveryData.fileSize;
+  const validSha256: string = deliveryData.sha256;
+
+  const exists = await verifyObjectExists(storageKey);
+  if (!exists) {
+    throw unprocessable("Deliverable file does not exist in storage.");
+  }
+
   let kind = deliveryData.kind;
   if (!kind) {
     const ext = deliveryData.fileName.split(".").pop()?.toLowerCase();
@@ -269,8 +309,8 @@ export async function submitDelivery(
       orderId,
       sequenceNo,
       fileName: deliveryData.fileName,
-      fileSize: deliveryData.fileSize ?? 1024,
-      sha256: deliveryData.sha256 ?? "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      fileSize: validFileSize,
+      sha256: validSha256,
       storageKey,
       kind,
       fileTree: deliveryData.fileTree ?? null,
@@ -353,14 +393,27 @@ export async function cancelOrder(user: AuthUser, orderId: string) {
   const isSeller = order.sellerId === user.id;
   if (!isBuyer && !isSeller) throw forbidden("Not an order participant.");
 
+  if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(order.status)) {
+    throw conflict(`Cannot cancel an order that is already ${order.status.toLowerCase()}.`);
+  }
+
   const now              = Date.now();
   const isLateRemedy     = isBuyer && (order.status === "IN_PROGRESS" || order.status === "IN_REVISION") && order.deadline !== null && now > order.deadline.getTime() + LATE_REMEDY_HOURS * HOUR_MS;
   const isUnstarted      = isBuyer && order.status === "PENDING_REQUIREMENTS";
 
   const fullRefundCancel = async (label: string) => {
     await db.transaction(async (tx) => {
-      const res = await tx.update(orders).set({ status: "CANCELLED", updatedAt: new Date() }).where(eq(orders.id, orderId)).returning({ id: orders.id });
-      if (res.length === 0) throw conflict("State changed concurrently.");
+      const res = await tx
+        .update(orders)
+        .set({ status: "CANCELLED", updatedAt: new Date() })
+        .where(
+          and(
+            eq(orders.id, orderId),
+            inArray(orders.status, ["PENDING_REQUIREMENTS", "IN_PROGRESS", "IN_REVISION"]),
+          ),
+        )
+        .returning({ id: orders.id });
+      if (res.length === 0) throw conflict("State changed concurrently or order cannot be cancelled.");
 
       const escrow    = await getOrCreateLedgerAccount(tx, "PLATFORM", "ESCROW");
       const buyerAvail = await getOrCreateLedgerAccount(tx, order.buyerId, "USER_AVAILABLE");
@@ -401,8 +454,23 @@ export async function openDispute(user: AuthUser, orderId: string, reason: strin
   if (!order) throw notFound("Order not found");
   if (order.buyerId !== user.id && order.sellerId !== user.id) throw forbidden("Not an order participant.");
 
+  const allowedDisputeStates = ["IN_PROGRESS", "IN_REVISION", "DELIVERED"];
+  if (!allowedDisputeStates.includes(order.status)) {
+    throw conflict(`Disputes can only be opened on active or delivered orders (current status: ${order.status}).`);
+  }
+
   await db.transaction(async (tx) => {
-    await tx.update(orders).set({ status: "DISPUTED", disputedAt: new Date(), autoCompleteAt: null, updatedAt: new Date() }).where(eq(orders.id, orderId));
+    const res = await tx
+      .update(orders)
+      .set({ status: "DISPUTED", disputedAt: new Date(), autoCompleteAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(orders.id, orderId),
+          inArray(orders.status, ["IN_PROGRESS", "IN_REVISION", "DELIVERED"]),
+        ),
+      )
+      .returning({ id: orders.id });
+    if (res.length === 0) throw conflict("State changed concurrently.");
     await tx.insert(disputes).values({ orderId, reason });
     await tx.insert(orderEvents).values({ orderId, label: "Dispute opened", actor: user.fullName, detail: reason });
     const recipientId = user.id === order.buyerId ? order.sellerId : order.buyerId;

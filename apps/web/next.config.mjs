@@ -15,7 +15,7 @@ nextEnv.loadEnvConfig(path.resolve(here, "../.."), process.env.NODE_ENV !== "pro
 const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
 const apiUrl = (process.env.API_URL ?? "").replace(/\/+$/, "");
 
-console.log(">>> NEXT CONFIG: useMocks =", useMocks, "apiUrl =", apiUrl);
+const isDev = process.env.NODE_ENV !== "production";
 
 if (!useMocks && !apiUrl) {
   throw new Error('API_URL must be set when NEXT_PUBLIC_USE_MOCKS="false" (see .env.example).');
@@ -36,13 +36,16 @@ function remotePatterns() {
 }
 
 // Appendix E: security headers and Content-Security-Policy
+const scriptSrc = isDev ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'" : "script-src 'self' 'unsafe-inline'";
+const connectSrc = isDev ? "connect-src 'self' https: http://localhost:4000" : "connect-src 'self' https:";
+
 const cspHeader = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https: http://localhost:4000",
+  connectSrc,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

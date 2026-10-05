@@ -35,7 +35,11 @@ export async function resolveVerification(profileId: string, status: "APPROVED" 
 
 export async function listDisputedOrders() {
   const rows = await db
-    .select({ id: orders.id })
+    .select({
+      id: orders.id,
+      reason: disputes.reason,
+      openedAt: disputes.createdAt,
+    })
     .from(orders)
     .innerJoin(disputes, eq(orders.id, disputes.orderId))
     .where(eq(orders.status, "DISPUTED"))
@@ -54,7 +58,12 @@ export async function listDisputedOrders() {
   const details = await Promise.all(
     rows.map(async (r) => {
       const ws = await getOrderWorkspace(adminUser, r.id);
-      return ws.order;
+      return {
+        ...ws.order,
+        disputeReason: r.reason,
+        reason: r.reason,
+        openedAt: r.openedAt.toISOString(),
+      };
     }),
   );
 

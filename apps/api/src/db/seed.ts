@@ -16,6 +16,11 @@ import { generateGigSlug } from "../lib/slug.js";
 const BCRYPT_ROUNDS = 12;
 
 export async function seedDatabase() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PROD_SEED !== "true") {
+    console.error("🛑 Refusing to run db:seed in production. Set ALLOW_PROD_SEED=true to override.");
+    throw new Error("Seeding disabled in production");
+  }
+
   console.log("🌱 Starting Micro-Gig database seeding...");
 
   // 1. Seed System Ledger Accounts (ESCROW, PLATFORM_REVENUE, BUYER_FUNDING)
@@ -41,7 +46,8 @@ export async function seedDatabase() {
   const adminEmail = "admin@microgig.dev";
   const [existingAdmin] = await db.select().from(users).where(eq(users.email, adminEmail)).limit(1);
   if (!existingAdmin) {
-    const passwordHash = await bcrypt.hash("Admin123!", BCRYPT_ROUNDS);
+    const adminPassword = process.env.ADMIN_PASSWORD || "Admin123!";
+    const passwordHash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
     const adminId = crypto.randomUUID();
     await db.insert(users).values({
       id: adminId,
@@ -57,7 +63,7 @@ export async function seedDatabase() {
       kind: "USER_AVAILABLE",
       balanceCents: 0,
     });
-    console.log("  ✓ Created Admin user: admin@microgig.dev / Admin123!");
+    console.log(`  ✓ Created Admin user: ${adminEmail}`);
   }
 
   // 3. Client User (Alex Rivera)

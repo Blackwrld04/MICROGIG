@@ -28,7 +28,7 @@ import {
 
 export async function buildApp() {
   const fastify = Fastify({
-    trustProxy: true,
+    trustProxy: 1,
     logger: {
       level: env.NODE_ENV === "production" ? "info" : "debug",
       transport:
@@ -44,6 +44,7 @@ export async function buildApp() {
     max: 120,
     timeWindow: "1 minute",
     redis: redis ?? undefined,
+    skipOnError: true,
     allowList: (req) => {
       return req.url === "/api/v1/health";
     },

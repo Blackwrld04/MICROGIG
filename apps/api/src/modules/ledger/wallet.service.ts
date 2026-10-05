@@ -90,7 +90,13 @@ export async function withdrawWallet(userId: string, amountCents: number) {
     const available = await getOrCreateLedgerAccount(tx, userId, "USER_AVAILABLE");
     const funding   = await getOrCreateLedgerAccount(tx, userId, "BUYER_FUNDING");
 
-    assertSufficientBalance(available.balanceCents, amountCents);
+    const [locked] = await tx
+      .select({ id: ledgerAccounts.id, balanceCents: ledgerAccounts.balanceCents })
+      .from(ledgerAccounts)
+      .where(eq(ledgerAccounts.id, available.id))
+      .for("update");
+
+    assertSufficientBalance(locked?.balanceCents ?? available.balanceCents, amountCents);
 
     const legs = [
       { accountId: available.id, amountCents: -amountCents, entryType: "WITHDRAWAL" as const },

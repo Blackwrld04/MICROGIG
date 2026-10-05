@@ -132,31 +132,37 @@ export function GigWizard() {
   async function uploadImageFile(item: { file?: File; url: string; uploadedUrl?: string }): Promise<string> {
     if (item.uploadedUrl) return item.uploadedUrl;
     if (!item.file) return item.url;
-    try {
-      const res = await fetch("/api/v1/uploads/presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: item.file.name,
-          contentType: item.file.type || "image/jpeg",
-          fileSize: item.file.size,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
-          await fetch(data.uploadUrl, {
-            method: "PUT",
-            headers: { "Content-Type": item.file.type || "image/jpeg" },
-            body: item.file,
-          });
-        }
-        return data.publicUrl || data.fileKey || item.url;
-      }
-    } catch (err) {
-      console.warn("Image upload failed, using fallback:", err);
+
+    const res = await fetch("/api/v1/uploads/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: item.file.name,
+        contentType: item.file.type || "image/jpeg",
+        fileSize: item.file.size,
+      }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      const msg = errData?.error?.message || (res.status === 503 ? "File storage not configured" : "Failed to upload image");
+      throw new Error(msg);
     }
-    return item.url;
+    const data = await res.json();
+    if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
+      const putRes = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": item.file.type || "image/jpeg" },
+        body: item.file,
+      });
+      if (!putRes.ok) {
+        throw new Error("Failed to upload image to storage server");
+      }
+    }
+    const finalUrl = data.publicUrl || data.fileKey;
+    if (!finalUrl) {
+      throw new Error("No image URL returned from storage");
+    }
+    return finalUrl;
   }
 
   const publishGig = useMutation({
@@ -186,6 +192,8 @@ export function GigWizard() {
       const parsed = createGigSchema.safeParse(payload);
       if (!parsed.success) return;
       publishGig.mutate(parsed.data);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to upload gig images. Please try again.", "danger");
     } finally {
       setUploadingImages(false);
     }

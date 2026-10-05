@@ -14,7 +14,8 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
       return api(`${base}/cancel`, { method: "POST", body: {} });
     case "LATE_CANCEL":
       return api(`${base}/cancel`, { method: "POST", body: { reason: "LATE_DELIVERY_24H" } });
-    case "DELIVER":
+    case "DELIVER": {
+      const d = payload.delivery as unknown as { storageKey?: string; fileKey?: string };
       return api(`${base}/deliveries`, {
         method: "POST",
         body: {
@@ -23,11 +24,12 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
           fileSize: payload.delivery.fileSize,
           sha256: payload.delivery.sha256,
           kind: payload.delivery.kind,
-          storageKey: (payload.delivery as any).storageKey || (payload.delivery as any).fileKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
-          fileKey: (payload.delivery as any).fileKey || (payload.delivery as any).storageKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
+          storageKey: d.storageKey || d.fileKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
+          fileKey: d.fileKey || d.storageKey || `pending-upload/${orderId}/${payload.delivery.fileName}`,
           fileTree: payload.delivery.fileTree ?? undefined,
         },
       });
+    }
     case "ACCEPT":
       return api(`${base}/complete`, { method: "POST", body: {}, idempotencyKey: newIdempotencyKey() });
     case "REQUEST_REVISION":

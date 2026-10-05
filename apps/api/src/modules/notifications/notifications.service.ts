@@ -97,6 +97,15 @@ export async function createAndDispatchNotification(input: {
 
       const subject = subjectMap[input.type] || "New notification from microgig";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
       const html = `
 <!DOCTYPE html>
 <html>
@@ -114,8 +123,8 @@ export async function createAndDispatchNotification(input: {
 <body>
   <div class="card">
     <div class="brand">microgig</div>
-    <p>Hi ${user.fullName},</p>
-    <div class="message">${input.message}</div>
+    <p>Hi ${escapeHtml(user.fullName)},</p>
+    <div class="message">${escapeHtml(input.message)}</div>
     <div>
       <a href="${actionLink}" class="btn">View on microgig</a>
     </div>

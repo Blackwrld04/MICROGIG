@@ -2,7 +2,7 @@ import cron from "node-cron";
 import type { FastifyBaseLogger } from "fastify";
 import { db } from "../db/connection.js";
 import { orders, orderEvents, notifications, ledgerAccounts, ledgerEntries } from "../db/schema/index.js";
-import { eq, lte, and, sql, isNull } from "drizzle-orm";
+import { eq, lte, gt, and, sql, isNull } from "drizzle-orm";
 import { env } from "../env.js";
 import { platformFeeCents, sellerNetCents, assertZeroSum } from "./money.js";
 import { createAndDispatchNotification } from "../modules/notifications/notifications.service.js";
@@ -94,12 +94,27 @@ export function startReconcilerCron(log: FastifyBaseLogger) {
       `);
 
       for (const row of (toSettle as any[])) {
-        await postClearingEntry(
-          row.order_id,
-          row.seller_id,
-          sellerNetCents(Number(row.price_cents), Number(row.fee_rate_bps)),
-        );
-        log.info({ orderId: row.order_id }, "Funds cleared to seller");
+        // Query the actual positive amount credited to seller's pending balance for this order (handles split dispute rulings accurately)
+        const [pendingCredit] = await db
+          .select({
+            totalCredited: sql<number>`COALESCE(SUM(${ledgerEntries.amountCents}), 0)`,
+          })
+          .from(ledgerEntries)
+          .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerEntries.accountId))
+          .where(
+            and(
+              eq(ledgerAccounts.userId, row.seller_id),
+              eq(ledgerAccounts.kind, "USER_PENDING"),
+              eq(ledgerEntries.orderId, row.order_id),
+              sql`${ledgerEntries.amountCents} > 0`,
+            ),
+          );
+
+        const amountToClear = Number(pendingCredit?.totalCredited ?? 0);
+        if (amountToClear > 0) {
+          await postClearingEntry(row.order_id, row.seller_id, amountToClear);
+          log.info({ orderId: row.order_id, amountToClear }, "Funds cleared to seller");
+        }
       }
     } catch (err) {
       log.error({ err }, "Clearing cron failed");
@@ -175,7 +190,7 @@ export function startReconcilerCron(log: FastifyBaseLogger) {
           and(
             eq(orders.status, "DELIVERED"),
             lte(orders.autoCompleteAt, warningWindow),
-            sql`${orders.autoCompleteAt} > ${now}`,
+            gt(orders.autoCompleteAt, now),
           ),
         );
 

@@ -5,5 +5,6 @@ export type AuthUser = {
   accountType: "CLIENT" | "FREELANCER";
   isAdmin: boolean;
   isSeller: boolean;
+  emailVerified?: boolean;
   sessionId: string;
 };
