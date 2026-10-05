@@ -18,7 +18,7 @@ export function VerificationQueue() {
 
   const decision = useMutation({
     mutationFn: async ({ v, approved }: { v: VerificationRequest; approved: boolean }) => {
-      if (!USE_MOCKS) await api(`/admin/verifications/${v.id}`, { method: "POST", body: { approved } });
+      if (!USE_MOCKS) await api(`/admin/verifications/${v.id}`, { method: "PATCH", body: { status: approved ? "APPROVED" : "REJECTED" } });
       return { v, approved };
     },
     onSuccess: ({ v, approved }) => {

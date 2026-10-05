@@ -9,7 +9,9 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { toOrderId } from "@/lib/api/adapters";
 import { ApiError, api, newIdempotencyKey } from "@/lib/api/client";
+import type { OrderResponse } from "@/lib/api/types";
 import { formatCents } from "@/lib/money";
 import { queryKeys } from "@/lib/query/keys";
 import { USE_MOCKS } from "@/mocks/config";
@@ -62,11 +64,11 @@ export function OrderPanel({
         await new Promise((r) => setTimeout(r, 400));
         return { orderId: "84931" };
       }
-      return api<{ orderId: string }>("/orders", {
+      return api<{ orderId: string } | OrderResponse>("/orders", {
         method: "POST",
         body: { gigId },
         idempotencyKey: idempotencyKey.current ?? newIdempotencyKey(),
-      });
+      }).then((res) => ({ orderId: toOrderId(res) }));
     },
     onSuccess: ({ orderId }) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
@@ -85,7 +87,7 @@ export function OrderPanel({
 
   const topUp = useMutation({
     mutationFn: async () => {
-      if (!USE_MOCKS) await api("/wallet/top-up", { method: "POST", body: { amountCents: TOP_UP_CENTS } });
+      if (!USE_MOCKS) await api("/wallet/topup", { method: "POST", body: { amountCents: TOP_UP_CENTS } });
     },
     onSuccess: () => {
       setBalance((b) => b + TOP_UP_CENTS);

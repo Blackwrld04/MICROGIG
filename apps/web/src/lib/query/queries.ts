@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { EMPTY_DASHBOARD, EMPTY_SELLER_PROFILE, loadDisputes, or404, toSellerPage, toSessions } from "@/lib/api/adapters";
 import { api } from "@/lib/api/client";
 import type {
   DashboardResponse,
@@ -51,7 +52,7 @@ export const queries = {
     }),
 
   seller: (id: string) =>
-    queryOptions({ queryKey: queryKeys.seller(id), queryFn: () => api<SellerPageResponse>(`/sellers/${encodeURIComponent(id)}`) }),
+    queryOptions({ queryKey: queryKeys.seller(id), queryFn: async () => toSellerPage(await api<SellerPageResponse>(`/sellers/${encodeURIComponent(id)}`)) }),
 
   orders: (tab: string, q: string | undefined) =>
     queryOptions({ queryKey: queryKeys.orders(tab, q), queryFn: () => api<OrderListResponse>(`/orders/user/me${qs({ tab, q })}`) }),
@@ -71,15 +72,15 @@ export const queries = {
 
   wallet: () => queryOptions({ queryKey: queryKeys.wallet, queryFn: () => api<WalletResponse>("/wallet") }),
 
-  dashboard: () => queryOptions({ queryKey: queryKeys.dashboard, queryFn: () => api<DashboardResponse>("/me/dashboard") }),
+  dashboard: () => queryOptions({ queryKey: queryKeys.dashboard, queryFn: () => or404(api<DashboardResponse>("/me/dashboard"), EMPTY_DASHBOARD) }),
 
   sellerProfile: () =>
-    queryOptions({ queryKey: queryKeys.sellerProfile, queryFn: () => api<SellerProfileResponse>("/me/seller-profile") }),
+    queryOptions({ queryKey: queryKeys.sellerProfile, queryFn: () => or404(api<SellerProfileResponse>("/me/seller-profile"), EMPTY_SELLER_PROFILE) }),
 
   sessions: () =>
     queryOptions({
       queryKey: queryKeys.sessions,
-      queryFn: async () => (await api<{ sessions: SessionRow[] }>("/me/sessions")).sessions,
+      queryFn: async () => toSessions(await api<SessionRow[] | { sessions: SessionRow[] }>("/me/sessions")),
     }),
 
   notificationPrefs: () =>
@@ -88,5 +89,5 @@ export const queries = {
   verifications: () =>
     queryOptions({ queryKey: queryKeys.verifications, queryFn: () => api<VerificationRequest[]>("/admin/verifications") }),
 
-  disputes: () => queryOptions({ queryKey: queryKeys.disputes, queryFn: () => api<OrderDetail[]>("/admin/disputes") }),
+  disputes: () => queryOptions({ queryKey: queryKeys.disputes, queryFn: () => (USE_MOCKS ? api<OrderDetail[]>("/admin/disputes") : loadDisputes(api)) }),
 };

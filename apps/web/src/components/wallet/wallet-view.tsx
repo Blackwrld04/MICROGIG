@@ -75,7 +75,7 @@ export function WalletView() {
   const move = useMutation({
     mutationFn: async (m: { type: "TOP_UP" | "WITHDRAWAL"; amountCents: number }) => {
       if (!USE_MOCKS) {
-        await api(m.type === "TOP_UP" ? "/wallet/top-up" : "/wallet/withdraw", { method: "POST", body: { amountCents: Math.abs(m.amountCents) } });
+        await api(m.type === "TOP_UP" ? "/wallet/topup" : "/wallet/withdraw", { method: "POST", body: { amountCents: Math.abs(m.amountCents) } });
       }
       return m;
     },
