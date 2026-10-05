@@ -1,8 +1,10 @@
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { env } from "./env.js";
 import { errorHandler } from "./errors.js";
+import { getRedisClient } from "./lib/redis.js";
 import authenticatePlugin, {
   requireAuth,
   clearSessionCookie,
@@ -26,6 +28,7 @@ import {
 
 export async function buildApp() {
   const fastify = Fastify({
+    trustProxy: true,
     logger: {
       level: env.NODE_ENV === "production" ? "info" : "debug",
       transport:
@@ -33,6 +36,24 @@ export async function buildApp() {
           ? { target: "pino-pretty", options: { colorize: true } }
           : undefined,
     },
+  });
+
+  const redis = getRedisClient();
+  await fastify.register(rateLimit, {
+    global: true,
+    max: 120,
+    timeWindow: "1 minute",
+    redis: redis ?? undefined,
+    allowList: (req) => {
+      return req.url === "/api/v1/health";
+    },
+    errorResponseBuilder: (_req, context) => ({
+      error: {
+        message: "Too many requests. Please slow down and try again shortly.",
+        statusCode: 429,
+        retryAfter: context.after,
+      },
+    }),
   });
 
   await fastify.register(cookie, {

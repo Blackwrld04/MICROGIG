@@ -26,12 +26,19 @@ const envSchema = z.object({
   REVISION_DEADLINE_HOURS: z.coerce.number().int().default(24),
   CLEARING_PERIOD_DAYS: z.coerce.number().int().default(3),
 
-  // Cloud storage (optional for MVP)
-  STORAGE_ENDPOINT: z.string().optional(),
-  STORAGE_ACCESS_KEY_ID: z.string().optional(),
-  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
-  STORAGE_BUCKET: z.string().optional(),
+  // Cloud storage (AWS S3 / Cloudflare R2 / MinIO)
+  REDIS_URL: z.string().optional(),
+  S3_REGION: z.string().default("auto"),
+  S3_ENDPOINT: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_PUBLIC_BUCKET_NAME: z.string().default("microgig-showcase-public"),
+  S3_PRIVATE_BUCKET_NAME: z.string().default("microgig-deliverables-private"),
   STORAGE_PUBLIC_URL: z.string().optional(),
+
+  // Transactional Email
+  EMAIL_FROM: z.string().default("microgig <notifications@microgig.dev>"),
+  RESEND_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -57,11 +64,16 @@ export const env = parsed.success
       AUTO_COMPLETE_DELAY_HOURS: 72,
       REVISION_DEADLINE_HOURS: 24,
       CLEARING_PERIOD_DAYS: 3,
-      STORAGE_ENDPOINT: undefined,
-      STORAGE_ACCESS_KEY_ID: undefined,
-      STORAGE_SECRET_ACCESS_KEY: undefined,
-      STORAGE_BUCKET: undefined,
-      STORAGE_PUBLIC_URL: undefined,
+      REDIS_URL: process.env.REDIS_URL,
+      S3_REGION: process.env.S3_REGION || "auto",
+      S3_ENDPOINT: process.env.S3_ENDPOINT,
+      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+      S3_PUBLIC_BUCKET_NAME: process.env.S3_PUBLIC_BUCKET_NAME || "microgig-showcase-public",
+      S3_PRIVATE_BUCKET_NAME: process.env.S3_PRIVATE_BUCKET_NAME || "microgig-deliverables-private",
+      STORAGE_PUBLIC_URL: process.env.STORAGE_PUBLIC_URL,
+      EMAIL_FROM: process.env.EMAIL_FROM || "microgig <notifications@microgig.dev>",
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
     };
 
 export type Env = typeof env;

@@ -68,10 +68,13 @@ export function OrderPanel({
         idempotencyKey: idempotencyKey.current ?? newIdempotencyKey(),
       });
     },
-    onSuccess: ({ orderId }) => {
+    onSuccess: (data: any) => {
+      const orderId = data?.orderId || data?.order?.id || data?.id;
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
-      router.push(`/orders/${orderId}`);
+      if (orderId) {
+        router.push(`/orders/${orderId}`);
+      }
     },
     onError: (err) => {
       if (err instanceof ApiError && err.kind === "payment_required") {
@@ -85,14 +88,24 @@ export function OrderPanel({
 
   const topUp = useMutation({
     mutationFn: async () => {
-      if (!USE_MOCKS) await api("/wallet/top-up", { method: "POST", body: { amountCents: TOP_UP_CENTS } });
+      if (!USE_MOCKS) {
+        return api<{ balanceCents: number }>("/wallet/top-up", { method: "POST", body: { amountCents: TOP_UP_CENTS } });
+      }
+      return { balanceCents: balance + TOP_UP_CENTS };
     },
-    onSuccess: () => {
-      setBalance((b) => b + TOP_UP_CENTS);
+    onSuccess: (data) => {
+      if (data?.balanceCents !== undefined) {
+        setBalance(data.balanceCents);
+      } else {
+        setBalance((b) => b + TOP_UP_CENTS);
+      }
       void queryClient.invalidateQueries({ queryKey: queryKeys.wallet });
       toast(`${formatCents(TOP_UP_CENTS)} virtual test funds added.`);
     },
-    onError: () => toast("Funds were not added. Please try again.", "danger"),
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Funds were not added. Please try again.";
+      toast(msg, "danger");
+    },
   });
 
   function confirm() {

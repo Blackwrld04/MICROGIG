@@ -43,9 +43,14 @@ export function LoginForm({ next, showDemo }: { next?: string; showDemo: boolean
 
   const login = useMutation({
     mutationFn: (credentials: { email: string; password: string }) =>
-      api<{ user: Me }>("/auth/login", { method: "POST", body: credentials }),
+      api<{ user?: Me } & Partial<Me>>("/auth/login", { method: "POST", body: credentials }),
     onMutate: () => setFormError(undefined),
-    onSuccess: ({ user }) => {
+    onSuccess: (data) => {
+      const user = data.user || (data.id && data.accountType ? (data as unknown as Me) : null);
+      if (!user) {
+        setFormError("Login failed. Please try again.");
+        return;
+      }
       queryClient.clear(); // never show the previous account's cached data
       router.push(safeNext(next) ?? homeFor(user));
       router.refresh();
@@ -148,9 +153,15 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
   const queryClient = useQueryClient();
 
   const register = useMutation({
-    mutationFn: (input: RegisterInput) => api<{ user: Me }>("/auth/register", { method: "POST", body: input }),
+    mutationFn: (input: RegisterInput) =>
+      api<{ user?: Me } & Partial<Me>>("/auth/register", { method: "POST", body: input }),
     onMutate: () => setFormError(undefined),
-    onSuccess: ({ user }) => {
+    onSuccess: (data) => {
+      const user = data.user || (data.id && data.accountType ? (data as unknown as Me) : null);
+      if (!user) {
+        setFormError("Registration failed. Please try again.");
+        return;
+      }
       queryClient.clear();
       // A freelancer's `next` (e.g. a checkout link) doesn't apply: send them to onboarding.
       router.push(user.accountType === "CLIENT" ? (safeNext(next) ?? homeFor(user)) : homeFor(user));

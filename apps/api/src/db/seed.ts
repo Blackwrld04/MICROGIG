@@ -115,8 +115,8 @@ export async function seedDatabase() {
     });
 
     await db.insert(ledgerAccounts).values([
-      { userId: sellerId, kind: "USER_AVAILABLE", balanceCents: 5000 },
-      { userId: sellerId, kind: "USER_PENDING", balanceCents: 2800 },
+      { userId: sellerId, kind: "USER_AVAILABLE", balanceCents: 0 },
+      { userId: sellerId, kind: "USER_PENDING", balanceCents: 0 },
     ]);
 
     const [profile] = await db.insert(sellerProfiles).values({
@@ -158,8 +158,8 @@ export async function seedDatabase() {
     const sampleGigs = [
       {
         title: "I will design a modern minimalist vector logo for your brand",
-        category: "Graphics & Design",
-        subcategory: "Logo Design & Tweaks",
+        category: "graphics-design",
+        subcategory: "logo-design-tweaks",
         description: "Get a clean, modern, and memorable minimalist vector logo tailored to your business identity. Delivered with source SVG, high-res transparent PNG, and commercial usage rights included.",
         priceCents: 2500, // $25.00
         turnaroundHours: 24,
@@ -178,8 +178,8 @@ export async function seedDatabase() {
       },
       {
         title: "I will fix CSS flexbox and responsive layout bugs in your web app",
-        category: "Programming & Tech",
-        subcategory: "Bug Fixing & Code Review",
+        category: "programming-tech",
+        subcategory: "bug-fixes-html-css-js",
         description: "Struggling with sticky elements, broken flexbox wrapping, or mobile viewport overflow? I will diagnose and fix your frontend CSS, Tailwind, or layout bugs within 24 hours.",
         priceCents: 1500, // $15.00
         turnaroundHours: 24,
@@ -196,8 +196,8 @@ export async function seedDatabase() {
       },
       {
         title: "I will write high converting SEO product descriptions",
-        category: "Writing & Translation",
-        subcategory: "Product Descriptions",
+        category: "writing-translation",
+        subcategory: "product-description-copy",
         description: "Engage your customers and boost your e-commerce conversion rates with persuasive, search-optimized product descriptions tailored for Shopify, Amazon, or Etsy stores.",
         priceCents: 2000, // $20.00
         turnaroundHours: 48,
@@ -214,8 +214,8 @@ export async function seedDatabase() {
       },
       {
         title: "I will edit YouTube short reels and TikTok videos with captions",
-        category: "Video & Animation",
-        subcategory: "Short Video Ads & Reels",
+        category: "video-animation",
+        subcategory: "short-video-trim",
         description: "Transform your raw footage into dynamic, high-retention short videos with punchy jump cuts, kinetic animated captions, sound effects, and background music.",
         priceCents: 3000, // $30.00
         turnaroundHours: 48,

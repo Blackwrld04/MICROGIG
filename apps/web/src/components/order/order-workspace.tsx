@@ -264,7 +264,7 @@ function Workspace({ order, readOnly, serverNow }: { order: OrderDetail; readOnl
           </TabsContent>
 
           <TabsContent value="deliverables" className="space-y-4">
-            {can("DELIVER") ? <DeliverForm onDeliver={(delivery) => act({ type: "DELIVER", delivery })} /> : null}
+            {can("DELIVER") ? <DeliverForm orderId={order.id} onDeliver={(delivery) => act({ type: "DELIVER", delivery })} /> : null}
             {order.deliveries.length === 0 ? (
               <p className="text-sm text-muted-foreground">No deliveries yet.</p>
             ) : (

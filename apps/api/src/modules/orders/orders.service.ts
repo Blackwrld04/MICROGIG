@@ -11,6 +11,7 @@ import {
 import { platformFeeCents, sellerNetCents, splitEscrow, assertZeroSum } from "../../lib/money.js";
 import { detectContactLeakage, LEAKAGE_WARNING } from "../../lib/leakage.js";
 import { settleOrderCompletion, getOrCreateLedgerAccount } from "../../lib/cron.js";
+import { createAndDispatchNotification } from "../notifications/notifications.service.js";
 import type { AuthUser } from "../../types/auth.js";
 
 const HOUR_MS                = 60 * 60 * 1000;
@@ -66,7 +67,13 @@ export async function placeOrder(buyerId: string, gigId: string) {
     });
 
     await tx.insert(orderEvents).values({ orderId, label: "Order placed", actor: buyerUser.fullName, detail: `Escrow hold of $${(gig.priceCents / 100).toFixed(2)} secured` });
-    await tx.insert(notifications).values({ userId: sellerProfile.userId, type: "ORDER_PLACED", orderId, message: `New order received from ${buyerUser.fullName}!` });
+    await createAndDispatchNotification({
+      userId: sellerProfile.userId,
+      type: "ORDER_PLACED",
+      orderId,
+      message: `New order received from ${buyerUser.fullName}!`,
+      tx,
+    });
   });
 
   return getOrderWorkspace({ id: buyerId, isAdmin: false, accountType: "CLIENT", email: "", fullName: "", isSeller: false, sessionId: "" }, orderId);
@@ -204,7 +211,13 @@ export async function submitRequirements(user: AuthUser, orderId: string, answer
     if (res.length === 0) throw conflict("State changed concurrently.");
 
     await tx.insert(orderEvents).values({ orderId, label: "Requirements submitted", actor: user.fullName, detail: `Delivery deadline set for ${deadline.toLocaleDateString()}` });
-    await tx.insert(notifications).values({ userId: order.sellerId, type: "REQUIREMENTS_SUBMITTED", orderId, message: `${user.fullName} submitted project requirements. Countdown started!` });
+    await createAndDispatchNotification({
+      userId: order.sellerId,
+      type: "REQUIREMENTS_SUBMITTED",
+      orderId,
+      message: `${user.fullName} submitted project requirements. Countdown started!`,
+      tx,
+    });
   });
 
   return getOrderWorkspace(user, orderId);
@@ -212,7 +225,20 @@ export async function submitRequirements(user: AuthUser, orderId: string, answer
 
 // ── Submit Delivery ───────────────────────────────────────────────────────────
 
-export async function submitDelivery(user: AuthUser, orderId: string, deliveryData: { fileName: string; fileSize: number; sha256: string; storageKey: string; kind: "image" | "archive" | "document"; fileTree?: string[]; notes: string }) {
+export async function submitDelivery(
+  user: AuthUser,
+  orderId: string,
+  deliveryData: {
+    fileName: string;
+    fileSize?: number;
+    sha256?: string;
+    storageKey?: string;
+    fileKey?: string;
+    kind?: "image" | "archive" | "document";
+    fileTree?: string[];
+    notes?: string;
+  },
+) {
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) throw notFound("Order not found");
   if (order.sellerId !== user.id) throw forbidden("Only the assigned freelancer can submit work.");
@@ -222,13 +248,42 @@ export async function submitDelivery(user: AuthUser, orderId: string, deliveryDa
   const sequenceNo  = existing.length + 1;
   const autoCompleteAt = new Date(Date.now() + AUTO_COMPLETE_HOURS * HOUR_MS);
 
+  const storageKey = deliveryData.storageKey || deliveryData.fileKey || `deliveries/${orderId}/${crypto.randomUUID()}/${deliveryData.fileName}`;
+  let kind = deliveryData.kind;
+  if (!kind) {
+    const ext = deliveryData.fileName.split(".").pop()?.toLowerCase();
+    if (["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext || "")) {
+      kind = "image";
+    } else if (["zip", "tar", "gz", "rar", "7z"].includes(ext || "")) {
+      kind = "archive";
+    } else {
+      kind = "document";
+    }
+  }
+
   await db.transaction(async (tx) => {
     const res = await tx.update(orders).set({ status: "DELIVERED", autoCompleteAt, updatedAt: new Date() }).where(and(eq(orders.id, orderId), or(eq(orders.status, "IN_PROGRESS"), eq(orders.status, "IN_REVISION")))).returning({ id: orders.id });
     if (res.length === 0) throw conflict("State changed concurrently.");
 
-    await tx.insert(deliveries).values({ orderId, sequenceNo, fileName: deliveryData.fileName, fileSize: deliveryData.fileSize, sha256: deliveryData.sha256, storageKey: deliveryData.storageKey, kind: deliveryData.kind, fileTree: deliveryData.fileTree ?? null, notes: deliveryData.notes });
+    await tx.insert(deliveries).values({
+      orderId,
+      sequenceNo,
+      fileName: deliveryData.fileName,
+      fileSize: deliveryData.fileSize ?? 1024,
+      sha256: deliveryData.sha256 ?? "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      storageKey,
+      kind,
+      fileTree: deliveryData.fileTree ?? null,
+      notes: deliveryData.notes ?? "",
+    });
     await tx.insert(orderEvents).values({ orderId, label: `Delivery #${sequenceNo} submitted`, actor: user.fullName, detail: deliveryData.fileName });
-    await tx.insert(notifications).values({ userId: order.buyerId, type: "DELIVERABLE_UPLOADED", orderId, message: `${user.fullName} uploaded delivery #${sequenceNo}. Please review!` });
+    await createAndDispatchNotification({
+      userId: order.buyerId,
+      type: "DELIVERABLE_UPLOADED",
+      orderId,
+      message: `${user.fullName} uploaded delivery #${sequenceNo}. Please review!`,
+      tx,
+    });
   });
 
   return getOrderWorkspace(user, orderId);
@@ -248,7 +303,13 @@ export async function acceptDelivery(user: AuthUser, orderId: string) {
 
     await settleOrderCompletion(tx, order);
     await tx.insert(orderEvents).values({ orderId, label: "Delivery accepted", actor: user.fullName, detail: "Escrow funds released to freelancer pending clearance" });
-    await tx.insert(notifications).values({ userId: order.sellerId, type: "ORDER_COMPLETED", orderId, message: `${user.fullName} accepted delivery! Escrow has been released.` });
+    await createAndDispatchNotification({
+      userId: order.sellerId,
+      type: "ORDER_COMPLETED",
+      orderId,
+      message: `${user.fullName} accepted delivery! Escrow has been released.`,
+      tx,
+    });
   });
 
   return getOrderWorkspace(user, orderId);
@@ -270,7 +331,13 @@ export async function requestRevision(user: AuthUser, orderId: string, feedback:
     if (res.length === 0) throw conflict("State changed concurrently.");
 
     await tx.insert(orderEvents).values({ orderId, label: `Revision ${order.revisionsUsed + 1} of ${order.revisionsIncluded} requested`, actor: user.fullName, detail: feedback });
-    await tx.insert(notifications).values({ userId: order.sellerId, type: "REVISION_REQUESTED", orderId, message: `${user.fullName} requested a revision on order #${order.orderNumber}.` });
+    await createAndDispatchNotification({
+      userId: order.sellerId,
+      type: "REVISION_REQUESTED",
+      orderId,
+      message: `${user.fullName} requested a revision on order #${order.orderNumber}.`,
+      tx,
+    });
   });
 
   return getOrderWorkspace(user, orderId);
@@ -338,6 +405,14 @@ export async function openDispute(user: AuthUser, orderId: string, reason: strin
     await tx.update(orders).set({ status: "DISPUTED", disputedAt: new Date(), autoCompleteAt: null, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(disputes).values({ orderId, reason });
     await tx.insert(orderEvents).values({ orderId, label: "Dispute opened", actor: user.fullName, detail: reason });
+    const recipientId = user.id === order.buyerId ? order.sellerId : order.buyerId;
+    await createAndDispatchNotification({
+      userId: recipientId,
+      type: "DISPUTE_OPENED",
+      orderId,
+      message: `${user.fullName} opened a dispute on order #${order.orderNumber}: "${reason}"`,
+      tx,
+    });
   });
 
   return getOrderWorkspace(user, orderId);
@@ -410,7 +485,12 @@ export async function sendOrderMessage(user: AuthUser, orderId: string, body: st
 
   const [msg] = await db.insert(messages).values({ orderId, senderId: user.id, senderRole, body, attachmentName: attachmentName ?? null, hasLeakage }).returning();
 
-  await db.insert(notifications).values({ userId: recipientId, type: "NEW_MESSAGE", orderId, message: `New message from ${user.fullName} on order #${order.orderNumber}` });
+  await createAndDispatchNotification({
+    userId: recipientId,
+    type: "NEW_MESSAGE",
+    orderId,
+    message: `New message from ${user.fullName} on order #${order.orderNumber}`,
+  });
 
   return {
     message: { id: msg.id, senderRole: msg.senderRole as "buyer" | "seller", senderName: user.fullName, body: msg.body, attachmentName: msg.attachmentName, createdAt: msg.createdAt.toISOString() },

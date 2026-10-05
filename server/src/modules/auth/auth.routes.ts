@@ -39,7 +39,14 @@ const loginBody = z.object({
 export async function authRoutes(fastify: FastifyInstance) {
   const isProd = env.NODE_ENV === "production";
 
-  fastify.post("/register", async (req, reply) => {
+  fastify.post("/register", {
+    config: {
+      rateLimit: {
+        max: 15,
+        timeWindow: "1 minute",
+      },
+    },
+  }, async (req, reply) => {
     const parsed = registerBody.safeParse(req.body);
     if (!parsed.success) {
       const fieldErrors = Object.fromEntries(
@@ -54,18 +61,30 @@ export async function authRoutes(fastify: FastifyInstance) {
       ipAddress: req.ip,
     });
 
-    setSessionCookie(reply, sessionId, isProd);
-    return reply.status(201).send({
+    const userPayload = {
       id:          user.id,
       email:       user.email,
       fullName:    user.fullName,
       accountType: user.accountType,
       isAdmin:     user.isAdmin,
       isSeller:    user.isSeller,
+    };
+
+    setSessionCookie(reply, sessionId, isProd);
+    return reply.status(201).send({
+      ...userPayload,
+      user: userPayload,
     });
   });
 
-  fastify.post("/login", async (req, reply) => {
+  fastify.post("/login", {
+    config: {
+      rateLimit: {
+        max: 15,
+        timeWindow: "1 minute",
+      },
+    },
+  }, async (req, reply) => {
     const parsed = loginBody.safeParse(req.body);
     if (!parsed.success) {
       throw new ApiError("Invalid request body", 422);
@@ -77,13 +96,18 @@ export async function authRoutes(fastify: FastifyInstance) {
     });
     setSessionCookie(reply, sessionId, isProd);
 
-    return reply.send({
+    const userPayload = {
       id:          user.id,
       email:       user.email,
       fullName:    user.fullName,
       accountType: user.accountType,
       isAdmin:     user.isAdmin,
       isSeller:    user.isSeller,
+    };
+
+    return reply.send({
+      ...userPayload,
+      user: userPayload,
     });
   });
 

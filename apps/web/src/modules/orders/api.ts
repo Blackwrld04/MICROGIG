@@ -15,8 +15,19 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
     case "LATE_CANCEL":
       return api(`${base}/cancel`, { method: "POST", body: { reason: "LATE_DELIVERY_24H" } });
     case "DELIVER":
-      // TODO(delivery owner): presign → PUT to S3 → send the server-issued fileKey (§14.1).
-      return api(`${base}/deliveries`, { method: "POST", body: { fileName: payload.delivery.fileName, notes: payload.delivery.notes } });
+      return api(`${base}/deliveries`, {
+        method: "POST",
+        body: {
+          fileName: payload.delivery.fileName,
+          notes: payload.delivery.notes,
+          fileSize: payload.delivery.fileSize,
+          sha256: payload.delivery.sha256,
+          kind: payload.delivery.kind,
+          storageKey: (payload.delivery as any).storageKey || (payload.delivery as any).fileKey,
+          fileKey: (payload.delivery as any).fileKey || (payload.delivery as any).storageKey,
+          fileTree: payload.delivery.fileTree,
+        },
+      });
     case "ACCEPT":
       return api(`${base}/complete`, { method: "POST", body: {}, idempotencyKey: newIdempotencyKey() });
     case "REQUEST_REVISION":

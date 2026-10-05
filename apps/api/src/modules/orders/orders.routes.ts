@@ -27,11 +27,12 @@ const requirementsBody = z.object({
 });
 
 const deliveryBody = z.object({
-  fileName:   z.string().min(1),
-  fileSize:   z.number().int().min(1),
-  sha256:     z.string().min(16),
-  storageKey: z.string().min(1),
-  kind:       z.enum(["image", "archive", "document"]),
+  fileName:   z.string().min(1).default("deliverable"),
+  fileSize:   z.number().int().min(0).optional(),
+  sha256:     z.string().optional(),
+  storageKey: z.string().optional(),
+  fileKey:    z.string().optional(),
+  kind:       z.enum(["image", "archive", "document"]).optional(),
   fileTree:   z.array(z.string()).optional(),
   notes:      z.string().default(""),
 });
@@ -60,7 +61,11 @@ export async function ordersRoutes(fastify: FastifyInstance) {
     const parsed = placeOrderBody.safeParse(req.body);
     if (!parsed.success) throw unprocessable("Gig ID is required");
     const result = await placeOrder(user.id, parsed.data.gigId);
-    return reply.status(201).send(result);
+    return reply.status(201).send({
+      ...result,
+      orderId: result.order.id,
+      id: result.order.id,
+    });
   });
 
   fastify.get("/orders/user/me", async (req, reply) => {

@@ -9,11 +9,26 @@ import {
   reviews,
   users,
 } from "../../db/schema/index.js";
-import { eq, and, sql, desc, asc, ilike, count } from "drizzle-orm";
+import { eq, and, sql, desc, asc, ilike, count, inArray, or } from "drizzle-orm";
 import { generateGigSlug } from "../../lib/slug.js";
 import { notFound, forbidden } from "../../errors.js";
 
 const PAGE_SIZE = 24;
+
+const CATEGORY_MAP: Record<string, string[]> = {
+  "graphics-design": ["graphics-design", "Graphics & Design"],
+  "programming-tech": ["programming-tech", "Programming & Tech"],
+  "writing-translation": ["writing-translation", "Writing & Translation"],
+  "video-animation": ["video-animation", "Video & Animation"],
+  "digital-marketing": ["digital-marketing", "Digital Marketing"],
+  "operations-admin": ["operations-admin", "Operations & Admin"],
+  "Graphics & Design": ["graphics-design", "Graphics & Design"],
+  "Programming & Tech": ["programming-tech", "Programming & Tech"],
+  "Writing & Translation": ["writing-translation", "Writing & Translation"],
+  "Video & Animation": ["video-animation", "Video & Animation"],
+  "Digital Marketing": ["digital-marketing", "Digital Marketing"],
+  "Operations & Admin": ["operations-admin", "Operations & Admin"],
+};
 
 export async function searchGigs(query: {
   category?: string;
@@ -26,8 +41,13 @@ export async function searchGigs(query: {
   const offset = (page - 1) * PAGE_SIZE;
 
   const conditions: ReturnType<typeof eq>[] = [eq(gigs.status, "PUBLISHED")];
-  if (query.category)    conditions.push(eq(gigs.category, query.category) as any);
-  if (query.subcategory) conditions.push(eq(gigs.subcategory, query.subcategory) as any);
+  if (query.category) {
+    const candidates = CATEGORY_MAP[query.category] ?? [query.category];
+    conditions.push(inArray(gigs.category, candidates) as any);
+  }
+  if (query.subcategory) {
+    conditions.push(or(eq(gigs.subcategory, query.subcategory), ilike(gigs.subcategory, `%${query.subcategory}%`)) as any);
+  }
   if (query.search?.trim()) conditions.push(ilike(gigs.title, `%${query.search.trim()}%`) as any);
 
   let orderBy = desc(gigs.createdAt);

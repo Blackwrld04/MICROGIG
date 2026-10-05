@@ -3,7 +3,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  BadgeCheck,
   Briefcase,
   CheckCircle2,
   Clock,
@@ -14,7 +13,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Star,
   Timer,
   Wallet,
   X,
@@ -129,11 +127,7 @@ export default async function LandingPage() {
         />
         <div className="container grid grid-cols-1 items-center gap-12 py-14 md:py-20 lg:grid-cols-[1.05fr_1fr]">
           <div className="min-w-0">
-            <p className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-heading">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden />
-              Fixed prices under $50 · Delivered in 24–48 hours
-            </p>
-            <h1 id="hero-heading" className="mt-5 text-4xl font-bold leading-[1.1] tracking-tight md:text-6xl">
+            <h1 id="hero-heading" className="text-4xl font-bold leading-[1.1] tracking-tight md:text-6xl">
               Small jobs, done in a day. <span className="whitespace-nowrap">No bidding.</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
@@ -195,38 +189,6 @@ export default async function LandingPage() {
                 sizes="(min-width: 1024px) 45vw, 90vw"
                 className="object-cover"
               />
-            </div>
-            <div className="absolute left-3 top-4 w-56 rounded-2xl sm:-left-8 sm:top-6 sm:w-60 border border-border bg-background p-4 shadow-xl sm:-left-10">
-              <p className="text-xs font-semibold text-muted-foreground">Order #84920</p>
-              <p className="mt-1 text-sm font-semibold text-heading">Vector app icon</p>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                  <CheckCircle2 className="h-3 w-3" aria-hidden /> Delivered
-                </span>
-                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-heading">
-                  <Lock className="h-3 w-3" aria-hidden /> $35.00 in escrow
-                </span>
-              </div>
-            </div>
-            <div className="absolute bottom-24 right-4 hidden w-56 rounded-2xl border border-border bg-background p-4 shadow-xl sm:block">
-              <div className="flex items-center gap-3">
-                <Image src="/images/avatars/sara.jpg" alt="" width={36} height={36} className="rounded-full object-cover" />
-                <div>
-                  <p className="text-sm font-semibold text-heading">Sara Connor</p>
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <BadgeCheck className="h-3 w-3" aria-hidden /> Verified seller
-                  </p>
-                </div>
-              </div>
-              <p className="mt-3 flex items-center gap-1 text-sm font-semibold text-heading">
-                <Star className="h-4 w-4 fill-heading" aria-hidden /> 5.0 <span className="font-normal text-muted-foreground">· delivered in 18h</span>
-              </p>
-            </div>
-            <div className="absolute -bottom-5 left-3 rounded-2xl bg-heading sm:left-8 px-4 py-3 text-white shadow-xl">
-              <p className="text-xs text-white/80">Released to freelancer</p>
-              <p className="text-lg font-bold">
-                {formatCents(EXAMPLE_NET)} <span className="text-sm font-normal text-white/80">of {formatCents(EXAMPLE_PRICE)}</span>
-              </p>
             </div>
           </div>
         </div>

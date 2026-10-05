@@ -103,5 +103,6 @@ export const createGigSchema = z.object({
     .array(z.object({ question: z.string().trim().min(1).max(150), answer: z.string().trim().min(1).max(600) }))
     .max(5, "Up to 5 FAQs"),
   requirementsPrompt: z.array(z.string().trim().min(1)).min(1).max(3, "1 to 3 questions"),
+  images: z.array(z.string()).optional(),
 });
 export type CreateGigInput = z.infer<typeof createGigSchema>;

@@ -5,6 +5,7 @@ import { orders, orderEvents, notifications, ledgerAccounts, ledgerEntries } fro
 import { eq, lte, and, sql, isNull } from "drizzle-orm";
 import { env } from "../env.js";
 import { platformFeeCents, sellerNetCents, assertZeroSum } from "./money.js";
+import { createAndDispatchNotification } from "../modules/notifications/notifications.service.js";
 
 export function startReconcilerCron(log: FastifyBaseLogger) {
   log.info("Starting reconciler cron jobs...");
@@ -49,11 +50,12 @@ export function startReconcilerCron(log: FastifyBaseLogger) {
             detail:  "72-hour review window elapsed",
           });
 
-          await tx.insert(notifications).values({
+          await createAndDispatchNotification({
             userId:  order.buyerId,
             type:    "ORDER_COMPLETED",
             orderId: order.id,
             message: `Order #${order.orderNumber} was auto-completed. Leave a review!`,
+            tx,
           });
 
           log.info({ orderId: order.id }, "Auto-completed order");
@@ -137,27 +139,165 @@ export function startReconcilerCron(log: FastifyBaseLogger) {
 
         if (existing.length > 0) continue;
 
-        await db.insert(notifications).values([
-          {
-            userId:  order.buyerId,
-            type:    "LATE_WARNING",
-            orderId: order.id,
-            message: `Order #${order.orderNumber} is past its delivery deadline.`,
-          },
-          {
-            userId:  order.sellerId,
-            type:    "LATE_WARNING",
-            orderId: order.id,
-            message: `Your delivery for order #${order.orderNumber} is overdue.`,
-          },
-        ]);
+        await createAndDispatchNotification({
+          userId:  order.buyerId,
+          type:    "LATE_WARNING",
+          orderId: order.id,
+          message: `Order #${order.orderNumber} is past its delivery deadline.`,
+        });
+        await createAndDispatchNotification({
+          userId:  order.sellerId,
+          type:    "LATE_WARNING",
+          orderId: order.id,
+          message: `Your delivery for order #${order.orderNumber} is overdue.`,
+        });
       }
     } catch (err) {
       log.error({ err }, "Late-warning cron failed");
     }
   });
 
+  // ── Hourly: 24-hour reminder before auto-completion (ORD-06) ─────────────
+  cron.schedule("0 * * * *", async () => {
+    try {
+      const now = new Date();
+      const warningWindow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      const approaching = await db
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          buyerId: orders.buyerId,
+          autoCompleteAt: orders.autoCompleteAt,
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.status, "DELIVERED"),
+            lte(orders.autoCompleteAt, warningWindow),
+            sql`${orders.autoCompleteAt} > ${now}`,
+          ),
+        );
+
+      for (const order of approaching) {
+        const existing = await db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.orderId, order.id),
+              eq(notifications.type, "AUTO_COMPLETE_WARNING"),
+            ),
+          )
+          .limit(1);
+
+        if (existing.length > 0) continue;
+
+        await createAndDispatchNotification({
+          userId: order.buyerId,
+          type: "AUTO_COMPLETE_WARNING",
+          orderId: order.id,
+          message: `Order #${order.orderNumber} will be automatically accepted in less than 24 hours. Please review the deliverable!`,
+        });
+        log.info({ orderId: order.id }, "Dispatched 24-hour auto-complete warning");
+      }
+    } catch (err) {
+      log.error({ err }, "Auto-complete warning cron failed");
+    }
+  });
+
+  // ── Midnight UTC: Ledger Invariant Audit Job (PRD Appendix E) ─────────────
+  cron.schedule("0 0 * * *", async () => {
+    try {
+      await runLedgerAudit(log);
+    } catch (err) {
+      log.error({ err }, "Ledger audit cron failed");
+    }
+  }, {
+    timezone: "UTC",
+  });
+
   log.info("Reconciler cron jobs initialized");
+}
+
+export async function runLedgerAudit(log?: FastifyBaseLogger) {
+  const logger = log ?? console;
+  logger.info("Executing ledger integrity audit...");
+
+  // Invariant 1: Sum of ledger entries per account equals account balance
+  const accountAudits = await db.execute(sql`
+    SELECT
+      la.id AS account_id,
+      la.kind,
+      la.user_id,
+      la.balance_cents,
+      COALESCE(SUM(le.amount_cents), 0)::bigint AS computed_balance_cents
+    FROM ledger_accounts la
+    LEFT JOIN ledger_entries le ON le.account_id = la.id
+    GROUP BY la.id, la.kind, la.user_id, la.balance_cents
+    HAVING la.balance_cents != COALESCE(SUM(le.amount_cents), 0)::bigint
+  `);
+
+  const invariant1Violations = accountAudits as any[];
+  if (invariant1Violations.length > 0) {
+    logger.error(
+      { violations: invariant1Violations },
+      "CRITICAL: Ledger Invariant 1 Violated! Account balances do not match entry sums!",
+    );
+  }
+
+  // Invariant 2: Across the entire system, entries must sum to 0
+  const totalEntriesRes = await db.execute(sql`
+    SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total_cents
+    FROM ledger_entries
+  `);
+  const totalCents = Number((totalEntriesRes as any)[0]?.total_cents ?? 0);
+  if (totalCents !== 0) {
+    logger.error(
+      { totalCents },
+      "CRITICAL: Ledger Invariant 2 Violated! Entire ledger entries do not sum to 0!",
+    );
+  }
+
+  // Invariant 3: Escrow account balance must match total price of active orders
+  const escrowBalRes = await db.execute(sql`
+    SELECT COALESCE(SUM(balance_cents), 0)::bigint AS escrow_total_cents
+    FROM ledger_accounts
+    WHERE kind = 'ESCROW'
+  `);
+  const escrowTotal = Number((escrowBalRes as any)[0]?.escrow_total_cents ?? 0);
+
+  const activeOrdersRes = await db.execute(sql`
+    SELECT COALESCE(SUM(price_cents), 0)::bigint AS active_orders_cents
+    FROM orders
+    WHERE status IN ('PENDING_REQUIREMENTS', 'IN_PROGRESS', 'IN_REVISION', 'DELIVERED')
+  `);
+  const activeOrdersCents = Number((activeOrdersRes as any)[0]?.active_orders_cents ?? 0);
+
+  if (escrowTotal !== activeOrdersCents) {
+    logger.error(
+      { escrowTotal, activeOrdersCents, discrepancy: escrowTotal - activeOrdersCents },
+      "CRITICAL: Ledger Invariant 3 Violated! Escrow balance does not match active orders sum!",
+    );
+  }
+
+  const passed = invariant1Violations.length === 0 && totalCents === 0 && escrowTotal === activeOrdersCents;
+  if (passed) {
+    logger.info("Ledger integrity audit passed successfully. All invariants hold.");
+  }
+
+  return {
+    passed,
+    discrepancies: {
+      accountBalanceMismatches: invariant1Violations,
+      systemNonZeroSum: totalCents,
+      escrowVsActiveOrders: {
+        escrowTotal,
+        activeOrdersCents,
+        discrepancy: escrowTotal - activeOrdersCents,
+      },
+    },
+  };
 }
 
 export async function getOrCreateLedgerAccount(

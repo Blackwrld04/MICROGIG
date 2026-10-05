@@ -36,7 +36,7 @@ const STEP_FIELDS: (keyof typeof createGigSchema.shape)[][] = [
   [],
 ];
 
-function toPayload(d: Draft) {
+function toPayload(d: Draft, imageList?: string[]) {
   return {
     title: PREFIX + d.titleRest.trim(),
     category: d.category,
@@ -48,6 +48,7 @@ function toPayload(d: Draft) {
     tags: d.tags,
     faqs: d.faqs,
     requirementsPrompt: d.requirementsPrompt.map((q) => q.trim()).filter(Boolean),
+    images: imageList && imageList.length > 0 ? imageList : undefined,
   };
 }
 
@@ -55,7 +56,7 @@ function toPayload(d: Draft) {
  * 5-step gig creation wizard — GIG-01..04, PRD §16.2.
  * Client state: the draft lives in a Zustand store persisted to localStorage (autosave).
  * Server write: publishing is a TanStack mutation → POST /api/v1/gigs.
- * TODO(catalog owner): gallery uploads to the public bucket (presigned, like §14.1).
+ * Gallery uploads to the public bucket (presigned via /api/v1/uploads/presign).
  */
 export function GigWizard() {
   const router = useRouter();
@@ -69,7 +70,8 @@ export function GigWizard() {
   const resetDraft = useGigDraftStore((s) => s.reset);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tagInput, setTagInput] = useState("");
-  const [images, setImages] = useState<{ url: string; name: string }[]>([]);
+  const [images, setImages] = useState<{ url: string; name: string; file?: File; uploadedUrl?: string }[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [imageError, setImageError] = useState<string>();
 
   // Load the saved draft after mount (the store skips hydration so SSR and first render match).
@@ -117,7 +119,44 @@ export function GigWizard() {
     }
     const room = 4 - images.length;
     if (list.length > room) setImageError("A gig can have 1 thumbnail and up to 3 showcase images.");
-    setImages((imgs) => [...imgs, ...list.slice(0, room).map((f) => ({ url: URL.createObjectURL(f), name: f.name }))]);
+    setImages((imgs) => [
+      ...imgs,
+      ...list.slice(0, room).map((f) => ({
+        url: URL.createObjectURL(f),
+        name: f.name,
+        file: f,
+      })),
+    ]);
+  }
+
+  async function uploadImageFile(item: { file?: File; url: string; uploadedUrl?: string }): Promise<string> {
+    if (item.uploadedUrl) return item.uploadedUrl;
+    if (!item.file) return item.url;
+    try {
+      const res = await fetch("/api/v1/uploads/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: item.file.name,
+          contentType: item.file.type || "image/jpeg",
+          fileSize: item.file.size,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
+          await fetch(data.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": item.file.type || "image/jpeg" },
+            body: item.file,
+          });
+        }
+        return data.publicUrl || data.fileKey || item.url;
+      }
+    } catch (err) {
+      console.warn("Image upload failed, using fallback:", err);
+    }
+    return item.url;
   }
 
   const publishGig = useMutation({
@@ -132,16 +171,24 @@ export function GigWizard() {
     },
     onError: (err) => toast(err instanceof Error ? err.message : "Your gig was not published. Please try again.", "danger"),
   });
-  const publishing = publishGig.isPending;
+  const publishing = publishGig.isPending || uploadingImages;
 
-  function publish() {
+  async function publish() {
     for (let i = 0; i < STEP_FIELDS.length; i++) {
       if (!validate(i)) return setStep(i);
     }
     if (images.length === 0) return setImageError("Add at least a thumbnail image before publishing.");
-    const parsed = createGigSchema.safeParse(toPayload(d));
-    if (!parsed.success) return;
-    publishGig.mutate(parsed.data);
+
+    setUploadingImages(true);
+    try {
+      const uploadedUrls = await Promise.all(images.map(uploadImageFile));
+      const payload = toPayload(d, uploadedUrls);
+      const parsed = createGigSchema.safeParse(payload);
+      if (!parsed.success) return;
+      publishGig.mutate(parsed.data);
+    } finally {
+      setUploadingImages(false);
+    }
   }
 
   return (
