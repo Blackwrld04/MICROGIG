@@ -4,7 +4,7 @@ import {
   reviews, disputes, gigs, users, sellerProfiles,
   notifications, ledgerAccounts, ledgerEntries,
 } from "../../db/schema/index.js";
-import { eq, and, sql, desc, or } from "drizzle-orm";
+import { eq, and, sql, desc, or, inArray } from "drizzle-orm";
 import {
   ApiError, notFound, forbidden, conflict, unprocessable, paymentRequired,
 } from "../../errors.js";
@@ -91,7 +91,7 @@ export async function listUserOrders(user: AuthUser, tab = "active", search?: st
 
   const sellerIds = [...new Set(allOrders.map((o) => o.sellerId))];
   const sellers   = sellerIds.length > 0
-    ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(sql`${users.id} = ANY(${sellerIds})`)
+    ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, sellerIds))
     : [];
   const sellerNameMap = new Map(sellers.map((s) => [s.id, s.fullName]));
 
