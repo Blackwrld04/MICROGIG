@@ -1,8 +1,8 @@
-import { Download, FileArchive, FileText, ImageIcon, Lock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { FileArchive, FileText, ImageIcon, Lock } from "lucide-react";
 import { formatBytes } from "@/lib/money";
 import { formatRelative } from "@/lib/time";
 import type { OrderDelivery } from "@/modules/orders/types";
+import { DownloadButton } from "./download-button";
 
 function FileTree({ paths }: { paths: string[] }) {
   return (
@@ -79,9 +79,7 @@ export function DeliveryCard({
       </div>
 
       {unlocked ? (
-        <Button variant="outline" size="sm" type="button">
-          <Download aria-hidden /> Download {delivery.fileName}
-        </Button>
+        <DownloadButton fileName={delivery.fileName} storageKey={delivery.storageKey} />
       ) : (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Lock className="h-3.5 w-3.5" aria-hidden /> Raw download unlocks when the order is completed.

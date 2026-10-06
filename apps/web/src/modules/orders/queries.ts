@@ -8,7 +8,8 @@ import type { OrderDetail, ViewerRole } from "./types";
 
 /*
  * Order reads for Server Components.
- * TODO(orders owner): replace fixtures with Prisma queries + assertOrderParticipant (§13.3).
+ * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
+ * the backend through src/lib/api/server-data.ts; keep the return shapes in sync with it.
  */
 
 export interface OrderRow {

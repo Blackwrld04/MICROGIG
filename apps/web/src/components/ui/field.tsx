@@ -33,11 +33,14 @@ export function Field({
           {hint}
         </p>
       ) : null}
-      {error ? (
-        <p id={`${id}-error`} className="text-xs font-semibold text-red-700">
-          {error}
-        </p>
-      ) : null}
+      {/* Always rendered so screen readers announce an error the moment it appears (e.g. on blur). */}
+      <div aria-live="polite">
+        {error ? (
+          <p id={`${id}-error`} className="text-xs font-semibold text-red-700">
+            {error}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

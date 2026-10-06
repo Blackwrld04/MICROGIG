@@ -6,7 +6,8 @@ import type { SellerProfileInput, VerificationStatus } from "./contracts";
 
 /*
  * Seller profile & onboarding reads — SEL-01/02/03.
- * TODO(seller owner): real queries; keep the shapes.
+ * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
+ * the backend through src/lib/api/server-data.ts; keep the return shapes in sync with it.
  */
 
 export async function getMySellerProfile(): Promise<{ profile: SellerProfileInput; verification: VerificationStatus }> {

@@ -13,6 +13,8 @@ export interface OrderDelivery {
   fileTree: string[] | null;
   notes: string;
   createdAt: string;
+  /** Private-bucket key for GET /deliveries/:fileKey/download (backend must include it; absent in demo data). */
+  storageKey?: string | null;
 }
 
 export interface OrderMessage {

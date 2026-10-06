@@ -11,7 +11,7 @@ import { toast } from "@/stores/toast-store";
 import { ID_DOCUMENT_LABELS } from "@/modules/seller/contracts";
 import type { VerificationRequest } from "@/mocks/account";
 
-/** One-click approve / reject of seller ID stubs — SEL-02, §19 risk #5. TODO: admin endpoints (not yet in §12). */
+/** One-click approve / reject of seller ID stubs — SEL-02, §19 risk #5. Real mode: PATCH /api/v1/admin/verifications/:id. */
 export function VerificationQueue() {
   const queryClient = useQueryClient();
   const { data: queue = [] } = useQuery(queries.verifications());

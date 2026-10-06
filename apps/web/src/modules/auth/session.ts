@@ -25,7 +25,7 @@ function decodeDemoSession(value: string): Me | null {
 
 /**
  * Current user for Server Components, or null when signed out.
- * TODO(auth owner): verify the access-token cookie + sessions row (PRD §13.1).
+ * Real mode asks the backend (GET /api/v1/auth/me) using the `sid` session cookie.
  */
 export const getCurrentUser = cache(async (): Promise<Me | null> => {
   if (USE_MOCKS) {
@@ -33,13 +33,19 @@ export const getCurrentUser = cache(async (): Promise<Me | null> => {
     return value ? decodeDemoSession(value) : null;
   }
   // Real mode: ask the backend who the cookies belong to (GET /api/v1/auth/me).
-  const res = await fetch(`${apiBaseUrl()}/api/v1/auth/me`, {
-    headers: { cookie: cookies().toString(), accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) return null;
-  const parsed = meSchema.safeParse(await res.json().catch(() => null));
-  return parsed.success ? parsed.data : null;
+  // If the backend is unreachable, treat the visitor as signed out instead of crashing every page.
+  try {
+    const res = await fetch(`${apiBaseUrl()}/api/v1/auth/me`, {
+      headers: { cookie: cookies().toString(), accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const parsed = meSchema.safeParse(await res.json().catch(() => null));
+    return parsed.success ? parsed.data : null;
+  } catch (err) {
+    console.error("[auth] backend unreachable while checking the session:", err instanceof Error ? err.message : err);
+    return null;
+  }
 });
 
 /**

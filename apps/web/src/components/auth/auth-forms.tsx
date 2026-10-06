@@ -297,15 +297,25 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const parsed = registerSchema.safeParse({ ...values, email: values.email.trim(), accountType });
+    // Leave `code` out until one is typed: an empty string fails the schema's min length and the
+    // error would land on the code field, which isn't shown yet (the first click looked dead).
+    const parsed = registerSchema.safeParse({ ...values, email: values.email.trim(), code: values.code.trim() || undefined, accountType });
     if (!parsed.success) return setErrors(fieldErrors(parsed.error));
 
+    // The schema passed, so only keep errors the schema doesn't cover (email taken, code).
+    const keep = (prev: Record<string, string>, extra: Record<string, string>) => {
+      const next: Record<string, string> = { ...extra };
+      if (prev.email) next.email = prev.email;
+      if (prev.code) next.code = prev.code;
+      return next;
+    };
+
     if (!values.confirmPassword) {
-      return setErrors({ confirmPassword: "Confirm your password" });
+      return setErrors((prev) => keep(prev, { confirmPassword: "Confirm your password" }));
     }
 
     if (values.password !== values.confirmPassword) {
-      return setErrors({ confirmPassword: "Passwords do not match" });
+      return setErrors((prev) => keep(prev, { confirmPassword: "Passwords do not match" }));
     }
 
     if (emailTaken || errors.email?.includes("used before")) {
@@ -324,7 +334,7 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
 
     // If code was sent, require the confirmation code
     if (codeSent && !values.code.trim()) {
-      return setErrors({ code: "Enter the 6-digit confirmation code sent to your email" });
+      return setErrors((prev) => keep(prev, { code: "Enter the 6-digit confirmation code sent to your email" }));
     }
 
     setErrors({});
@@ -437,7 +447,7 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
                 Already registered with this email?{" "}
                 <Link
                   href={`/login?email=${encodeURIComponent(values.email)}`}
-                  className="font-semibold text-heading underline hover:text-emerald-600"
+                  className="font-semibold text-heading underline hover:decoration-primary hover:decoration-2"
                 >
                   Sign in here &rarr;
                 </Link>
@@ -454,22 +464,22 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
       </Field>
 
       {(codeSent || values.code) ? (
-        <Field id="reg-code" label="Confirmation code" error={errors.code}>
+        <Field
+          id="reg-code"
+          label="Confirmation code"
+          hint={`Enter the 6-digit code sent to ${values.email}. Check your spam or updates folder if you don't see it.`}
+          error={errors.code}
+        >
           {(p) => (
-            <div className="space-y-1.5">
-              <Input
-                {...p}
-                type="text"
-                autoComplete="one-time-code"
-                placeholder="Enter 6-digit confirmation code"
-                maxLength={10}
-                value={values.code}
-                onChange={(e) => setValues((v) => ({ ...v, code: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter the 6-digit code sent to {values.email}. Check your spam or updates folder if you don&apos;t see it.
-              </p>
-            </div>
+            <Input
+              {...p}
+              type="text"
+              autoComplete="one-time-code"
+              placeholder="Enter 6-digit confirmation code"
+              maxLength={10}
+              value={values.code}
+              onChange={(e) => setValues((v) => ({ ...v, code: e.target.value }))}
+            />
           )}
         </Field>
       ) : null}

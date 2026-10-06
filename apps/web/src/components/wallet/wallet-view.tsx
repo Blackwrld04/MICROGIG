@@ -65,7 +65,8 @@ function cardsFor(wallet: WalletResponse) {
 /**
  * Wallet & earnings — PRD §11.6 / §16.7. Server state via TanStack Query; top-up and withdraw
  * are mutations (demo: applied to the cache; real: POST, then refetch).
- * TODO(ledger owner): top-up / withdraw endpoints aren't in PRD §12 yet; CSV via GET /wallet/activity?format=csv.
+ * Real mode: POST /api/v1/wallet/topup (clients) and /wallet/withdraw (freelancers). The CSV is built
+ * from the loaded activity (the backend has no /wallet/activity?format=csv yet).
  */
 export function WalletView() {
   const queryClient = useQueryClient();

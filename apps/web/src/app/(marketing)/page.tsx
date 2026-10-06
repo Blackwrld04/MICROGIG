@@ -117,7 +117,11 @@ function Step({ n, icon: Icon, title, body }: { n: number; icon: typeof Search; 
 
 /** Public landing page: presents the product and routes visitors to client or freelancer sign-up. */
 export default async function LandingPage() {
-  const { gigs } = await serverData.searchGigs({ sort: "rating_desc", page: 1 });
+  // The landing page must never fail because of the catalog: show it without featured gigs instead.
+  const gigs = await serverData
+    .searchGigs({ sort: "rating_desc", page: 1 })
+    .then((r) => r.gigs)
+    .catch(() => []);
   const featured = gigs.slice(0, 4);
 
   return (
@@ -328,6 +332,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ----------------------------------------------------- Featured gigs */}
+      {featured.length > 0 ? (
       <section aria-labelledby="featured-heading" className="py-16 md:py-24">
         <Reveal>
         <div className="container">
@@ -354,6 +359,7 @@ export default async function LandingPage() {
         </div>
         </Reveal>
       </section>
+      ) : null}
 
       {/* ------------------------------------------------------------ Escrow */}
       <section id="escrow" aria-labelledby="escrow-heading" className="scroll-mt-20 bg-heading py-20 text-white md:py-28">

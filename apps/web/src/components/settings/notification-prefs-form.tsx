@@ -20,7 +20,7 @@ const ROWS: { key: keyof Prefs; label: string; description: string; inApp: "alwa
 /**
  * Notification preference matrix — NOT-02 (NotificationPref: orderEmail, inboxEmail, promoEmail).
  * In-app alerts for critical order events are always on.
- * TODO: GET / PUT /api/v1/notification-prefs.
+ * Real mode: GET / PUT /api/v1/notification-prefs.
  */
 export function NotificationPrefsForm() {
   const { data } = useQuery(queries.notificationPrefs());

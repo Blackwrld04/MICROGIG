@@ -21,7 +21,8 @@ export interface InboxThread {
 
 /**
  * Inbox threads — MSG-02. One thread per order (MSG-01 is order-scoped).
- * TODO(messaging owner): real query with per-user read/star/archive state.
+ * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
+ * the backend through src/lib/api/server-data.ts; keep the return shapes in sync with it.
  */
 export async function listThreads(role: ViewerRole, nowMs: number): Promise<InboxThread[]> {
   return buildMockOrders(nowMs)

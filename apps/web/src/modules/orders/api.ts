@@ -44,3 +44,16 @@ export async function sendOrderAction(orderId: string, payload: ActionPayload): 
       return api(`${base}/review`, { method: "POST", body: { rating: payload.rating, body: payload.body ?? undefined } });
   }
 }
+
+/**
+ * POST /api/v1/orders/:id/messages (MSG-01). The backend requires non-empty text and stores the
+ * attachment's file name only (no attachment upload endpoint yet). Returns the backend's
+ * off-platform warning (MSG-03), if its own check flagged the message.
+ */
+export async function postOrderMessage(orderId: string, message: { body: string; attachmentName: string | null }): Promise<string | null> {
+  const res = await api<{ leakageWarning?: string | null } | null>(`/orders/${encodeURIComponent(orderId)}/messages`, {
+    method: "POST",
+    body: { body: message.body, ...(message.attachmentName ? { attachmentName: message.attachmentName } : {}) },
+  });
+  return res?.leakageWarning ?? null;
+}

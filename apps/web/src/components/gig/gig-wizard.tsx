@@ -147,22 +147,22 @@ export function GigWizard() {
       const msg = errData?.error?.message || (res.status === 503 ? "File storage not configured" : "Failed to upload image");
       throw new Error(msg);
     }
-    const data = await res.json();
-    if (data.uploadUrl && data.uploadUrl.startsWith("http")) {
-      const putRes = await fetch(data.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": item.file.type || "image/jpeg" },
-        body: item.file,
-      });
-      if (!putRes.ok) {
-        throw new Error("Failed to upload image to storage server");
-      }
+    const data = (await res.json()) as { uploadUrl?: string; publicUrl?: string };
+    const isAbsolute = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//.test(v);
+    // Never report success without a real upload, and only send the backend a real image URL
+    // (POST /gigs validates images as URLs; a bare storage key would be rejected).
+    if (!isAbsolute(data.uploadUrl) || !isAbsolute(data.publicUrl)) {
+      throw new Error("Image storage isn't set up correctly (missing upload or public URL). Please contact support.");
     }
-    const finalUrl = data.publicUrl || data.fileKey;
-    if (!finalUrl) {
-      throw new Error("No image URL returned from storage");
+    const putRes = await fetch(data.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": item.file.type || "image/jpeg" },
+      body: item.file,
+    });
+    if (!putRes.ok) {
+      throw new Error("Failed to upload image to storage server");
     }
-    return finalUrl;
+    return data.publicUrl;
   }
 
   const publishGig = useMutation({

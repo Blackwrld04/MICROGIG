@@ -24,7 +24,7 @@ const RULING: Record<Outcome, "BUYER" | "SELLER" | "SPLIT"> = { REFUND: "BUYER",
 
 /**
  * Dispute arbitration — ORD-14, T-10 (release), T-11 (refund), T-12 (split).
- * TODO: admin resolve endpoint (not yet in §12).
+ * Real mode: POST /api/v1/admin/disputes/:id/resolve.
  */
 /** Admin dispute triage list — ORD-14. Server state via TanStack Query. */
 export function DisputeList() {
@@ -64,7 +64,6 @@ function DisputeResolver({ order }: { order: OrderDetail }) {
 
   const resolveDispute = useMutation({
     mutationFn: async (decision: { outcome: Outcome; buyerRefundBps: number; notes: string }) => {
-      // TODO(orders owner): admin resolve endpoint isn't in PRD §12 yet (T-10 / T-11 / T-12).
       if (!USE_MOCKS) {
         await api(`/admin/disputes/${order.id}/resolve`, {
           method: "POST",
