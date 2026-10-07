@@ -1,5 +1,10 @@
+import dns from "node:dns";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {}
 
 const rootEnv = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

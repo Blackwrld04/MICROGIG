@@ -1,19 +1,39 @@
+import dns from "node:dns";
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { env } from "../env.js";
 
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {}
+
 const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
+const isGmail = Boolean(
+  (env.SMTP_HOST && env.SMTP_HOST.toLowerCase().includes("gmail.com")) ||
+  (env.SMTP_USER && env.SMTP_USER.toLowerCase().includes("@gmail.com"))
+);
+
 const smtpTransporter = (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS)
-  ? nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS.replace(/\s+/g, ""),
-      },
-    })
+  ? nodemailer.createTransport(
+      isGmail
+        ? {
+            service: "gmail",
+            auth: {
+              user: env.SMTP_USER,
+              pass: env.SMTP_PASS.replace(/\s+/g, ""),
+            },
+          }
+        : {
+            host: env.SMTP_HOST,
+            port: env.SMTP_PORT,
+            secure: env.SMTP_PORT === 465 || env.SMTP_SECURE,
+            auth: {
+              user: env.SMTP_USER,
+              pass: env.SMTP_PASS.replace(/\s+/g, ""),
+            },
+          }
+    )
   : null;
 
 export interface SendEmailOptions {
