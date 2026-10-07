@@ -24,5 +24,8 @@ export const lockConnection = postgres(env.DATABASE_URL, {
   max: 1,
   idle_timeout: 0,
   connect_timeout: 10,
-  ssl: env.NODE_ENV === "production" ? "require" : undefined,
+  ssl:
+    env.NODE_ENV === "production" && !env.DATABASE_URL.includes("localhost")
+      ? { rejectUnauthorized: false }
+      : undefined,
 });
