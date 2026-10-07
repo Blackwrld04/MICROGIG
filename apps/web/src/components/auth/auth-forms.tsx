@@ -171,6 +171,9 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     onSuccess: (data) => {
       setCodeSent(true);
       setCooldown(60);
+      if (data.code) {
+        setValues((v) => ({ ...v, code: data.code! }));
+      }
       setErrors((prev) => {
         const nextErr = { ...prev };
         delete nextErr.email;

@@ -171,7 +171,13 @@ export async function sendVerificationCode(rawEmail: string) {
     env.ALLOW_SIMULATED_EMAIL
   ) {
     console.log(`[auth] ALLOW_SIMULATED_EMAIL is active. Code for ${email} is ${code}`);
-    return { ok: true, message: GENERIC_SEND_MESSAGE };
+    return {
+      ok: true,
+      message: env.ALLOW_SIMULATED_EMAIL
+        ? `[Preview Mode] Your verification code is: ${code}`
+        : GENERIC_SEND_MESSAGE,
+      code: env.ALLOW_SIMULATED_EMAIL ? code : undefined,
+    };
   }
 
   // The code never reached the user: burn it so it can't be guessed.
