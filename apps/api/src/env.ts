@@ -57,6 +57,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_SECURE: z.coerce.boolean().default(true),
+  ALLOW_SIMULATED_EMAIL: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -99,6 +100,7 @@ export const env = parsed.success
       SMTP_USER: process.env.SMTP_USER,
       SMTP_PASS: process.env.SMTP_PASS,
       SMTP_SECURE: process.env.SMTP_SECURE !== "false",
+      ALLOW_SIMULATED_EMAIL: process.env.ALLOW_SIMULATED_EMAIL === "true",
     };
 
 export type Env = typeof env;

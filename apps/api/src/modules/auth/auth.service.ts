@@ -152,6 +152,8 @@ export async function sendVerificationCode(rawEmail: string) {
       },
     });
 
+  console.log(`[auth] Confirmation code generated for ${email}: ${code}`);
+
   const message = existingUser
     ? existingAccountEmail()
     : {
@@ -163,8 +165,12 @@ export async function sendVerificationCode(rawEmail: string) {
   const result = await sendTransactionalEmail({ to: email, ...message });
   if (result.status === "sent") return { ok: true, message: GENERIC_SEND_MESSAGE };
 
-  // Development without a provider: the email (code included) was printed to the API log.
-  if (result.status === "not_configured" && env.NODE_ENV !== "production") {
+  // Development without a provider or simulation mode:
+  if (
+    (result.status === "not_configured" && env.NODE_ENV !== "production") ||
+    env.ALLOW_SIMULATED_EMAIL
+  ) {
+    console.log(`[auth] ALLOW_SIMULATED_EMAIL is active. Code for ${email} is ${code}`);
     return { ok: true, message: GENERIC_SEND_MESSAGE };
   }
 
