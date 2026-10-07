@@ -15,8 +15,6 @@ nextEnv.loadEnvConfig(path.resolve(here, "../.."), process.env.NODE_ENV !== "pro
 const useMocks = process.env.NEXT_PUBLIC_USE_MOCKS !== "false";
 const apiUrl = (process.env.API_URL ?? "").replace(/\/+$/, "");
 
-const isDev = process.env.NODE_ENV !== "production";
-
 if (!useMocks && !apiUrl) {
   throw new Error('API_URL must be set when NEXT_PUBLIC_USE_MOCKS="false" (see .env.example).');
 }
@@ -35,29 +33,14 @@ function remotePatterns() {
   return patterns;
 }
 
-// Appendix E: security headers and Content-Security-Policy
-const scriptSrc = isDev ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'" : "script-src 'self' 'unsafe-inline'";
-const connectSrc = isDev ? "connect-src 'self' https: http://localhost:4000" : "connect-src 'self' https:";
-
-const cspHeader = [
-  "default-src 'self'",
-  scriptSrc,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  connectSrc,
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join("; ");
-
+// Appendix E: security headers. The Content-Security-Policy (with a per-request nonce) is set in
+// src/middleware.ts, because a nonce must change on every request.
 const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-  { key: "Content-Security-Policy", value: cspHeader },
 ];
 
 /** @type {import('next').NextConfig} */

@@ -72,6 +72,9 @@ test("registering as a freelancer locks the account to the seller side", async (
   await page.getByLabel("Email").fill(`jamie+${Date.now()}@example.com`);
   await page.getByLabel("Password", { exact: true }).fill("secret-123!");
   await page.getByLabel("Confirm password").fill("secret-123!");
+  // First submit sends the email confirmation code; then the code field appears.
+  await page.getByRole("button", { name: "Create freelancer account" }).click();
+  await page.getByLabel("Confirmation code").fill("246810");
   await page.getByRole("button", { name: "Create freelancer account" }).click();
   await expect(page).toHaveURL(/\/seller\/dashboard/, { timeout: 30_000 }); // first dev compile is slow
 
@@ -144,6 +147,22 @@ test("freelancer inbox: open a thread and reply", async ({ page }) => {
   await page.getByLabel("Message", { exact: true }).fill("On it, fix coming within the hour.");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("On it, fix coming within the hour.").first()).toBeVisible();
+});
+
+test("completed order: client can start the deliverable download", async ({ page }) => {
+  await loginAs(page, "client");
+  await page.goto("/orders/84890");
+  await page.getByRole("tab", { name: /Deliverables/ }).click();
+  await page.getByRole("button", { name: /Download about-page-edited\.docx/ }).click();
+  // Demo data has no real file, so the app says so instead of silently doing nothing.
+  await expect(page.getByRole("status").filter({ hasText: "no real file to download" })).toBeVisible();
+});
+
+test("a message needs text, even with an attachment", async ({ page }) => {
+  await loginAs(page, "freelancer");
+  await page.goto("/inbox?thread=84925");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Write a message")).toBeVisible();
 });
 
 test("gig images load from local storage", async ({ page }) => {

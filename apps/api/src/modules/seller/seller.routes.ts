@@ -60,7 +60,7 @@ export async function sellerRoutes(fastify: FastifyInstance) {
 
   fastify.get("/sellers/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const data = await getPublicSellerCard(id);
+    const data = await getPublicSellerCard(id, req.user);
     if (!data) throw notFound("Seller not found");
     return reply.send(data);
   });

@@ -16,7 +16,7 @@ const MAX_ATTACHMENT = 10 * 1024 * 1024; // MSG-01
 
 /**
  * Order-scoped async thread — MSG-01 / MSG-03.
- * TODO: poll GET /api/v1/orders/:id/messages every 15 s (pause when the tab is hidden).
+ * New messages arrive through the order query, which polls every 15 s against the real backend.
  */
 export function MessageThread({
   messages,
@@ -37,7 +37,8 @@ export function MessageThread({
   const [confirmLeak, setConfirmLeak] = useState(false);
 
   function send(force = false) {
-    if (!body.trim() && !file) return setError("Write a message or attach a file");
+    // The backend requires text on every message (an attachment alone is rejected).
+    if (!body.trim()) return setError(file ? "Add a short message to go with your attachment" : "Write a message");
     if (!force && detectContactLeakage(body)) return setConfirmLeak(true); // warn only, never block
     onSend({
       id: `msg-${Date.now()}`,

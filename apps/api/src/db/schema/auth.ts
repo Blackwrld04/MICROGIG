@@ -4,8 +4,10 @@ import {
   text,
   varchar,
   boolean,
+  integer,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -23,23 +25,32 @@ export const users = pgTable("users", {
   accountType:  accountTypeEnum("account_type").notNull(),
   isAdmin:      boolean("is_admin").notNull().default(false),
   emailVerified: boolean("email_verified").notNull().default(false),
+  // Login lockout (PRD §13.2): 5 failed attempts lock the account for 15 minutes.
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil:  timestamp("locked_until", { withTimezone: true }),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ── Email Verifications ───────────────────────────────────────────────────────
+// One row per email. Only a SHA-256 of the code is stored; `attempts` caps guesses and the
+// send counters throttle how often a code can be emailed.
 
 export const emailVerifications = pgTable(
   "email_verifications",
   {
-    id:        text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    email:     varchar("email", { length: 255 }).notNull(),
-    code:      varchar("code", { length: 10 }).notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    id:              text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    email:           varchar("email", { length: 255 }).notNull(),
+    codeHash:        varchar("code_hash", { length: 64 }).notNull(),
+    attempts:        integer("attempts").notNull().default(0),
+    sendCount:       integer("send_count").notNull().default(1),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSentAt:      timestamp("last_sent_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt:       timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    emailIdx: index("email_verifications_email_idx").on(t.email),
+    emailUnique: uniqueIndex("email_verifications_email_unique").on(t.email),
   }),
 );
 

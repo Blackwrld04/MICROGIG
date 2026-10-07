@@ -13,6 +13,10 @@ export interface OrderDelivery {
   fileTree: string[] | null;
   notes: string;
   createdAt: string;
+  /** Private-bucket key for GET /deliveries/:fileKey/download. The API only sends it once the viewer may download (buyer: after COMPLETED). */
+  storageKey?: string | null;
+  /** Same-origin URL of the watermarked preview for image deliveries (DEL-06); absent in demo data. */
+  previewUrl?: string | null;
 }
 
 export interface OrderMessage {

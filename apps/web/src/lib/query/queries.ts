@@ -58,7 +58,12 @@ export const queries = {
     queryOptions({ queryKey: queryKeys.orders(tab, q), queryFn: () => api<OrderListResponse>(`/orders/user/me${qs({ tab, q })}`) }),
 
   order: (id: string) =>
-    queryOptions({ queryKey: queryKeys.order(id), queryFn: () => api<OrderResponse>(`/orders/${encodeURIComponent(id)}`) }),
+    queryOptions({
+      queryKey: queryKeys.order(id),
+      queryFn: () => api<OrderResponse>(`/orders/${encodeURIComponent(id)}`),
+      // Keep messages, deliveries and status fresh in the workspace (MSG-01: 15 s polling).
+      refetchInterval: pollEvery(15_000),
+    }),
 
   inbox: () =>
     queryOptions({ queryKey: queryKeys.inbox, queryFn: () => api<InboxThread[]>("/inbox"), refetchInterval: pollEvery(15_000) }),

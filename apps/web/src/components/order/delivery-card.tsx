@@ -1,8 +1,8 @@
-import { Download, FileArchive, FileText, ImageIcon, Lock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { FileArchive, FileText, ImageIcon, Lock } from "lucide-react";
 import { formatBytes } from "@/lib/money";
 import { formatRelative } from "@/lib/time";
 import type { OrderDelivery } from "@/modules/orders/types";
+import { DownloadButton } from "./download-button";
 
 function FileTree({ paths }: { paths: string[] }) {
   return (
@@ -46,7 +46,15 @@ export function DeliveryCard({
         <span className="font-semibold text-heading">Note:</span> {delivery.notes}
       </p>
 
-      {delivery.kind === "image" && !unlocked ? (
+      {delivery.kind === "image" && !unlocked && delivery.previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- private, cookie-authenticated preview; not for next/image
+        <img
+          src={delivery.previewUrl}
+          alt={`Watermarked preview of ${delivery.fileName}`}
+          className="w-full rounded-md bg-surface object-contain"
+          loading="lazy"
+        />
+      ) : delivery.kind === "image" && !unlocked ? (
         <div
           className="relative flex aspect-[16/9] items-center justify-center overflow-hidden rounded-md bg-surface"
           role="img"
@@ -79,9 +87,7 @@ export function DeliveryCard({
       </div>
 
       {unlocked ? (
-        <Button variant="outline" size="sm" type="button">
-          <Download aria-hidden /> Download {delivery.fileName}
-        </Button>
+        <DownloadButton fileName={delivery.fileName} storageKey={delivery.storageKey} />
       ) : (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Lock className="h-3.5 w-3.5" aria-hidden /> Raw download unlocks when the order is completed.

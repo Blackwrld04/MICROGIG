@@ -18,6 +18,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   DATABASE_URL: z.string().url("DATABASE_URL must be a valid postgres URL"),
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
+  // Proxies in front of the API whose X-Forwarded-For entries are trusted for req.ip (rate
+  // limits). 1 = the host's load balancer only; behind Vercel rewrites -> Render, use 2.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
   COOKIE_SECRET: z.string().min(32, "COOKIE_SECRET must be at least 32 chars"),
 
   // Business constants
@@ -65,6 +68,7 @@ export const env = parsed.success
       PORT: 4000,
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/microgig",
       WEB_ORIGIN: "http://localhost:3000",
+      TRUST_PROXY_HOPS: 1,
       COOKIE_SECRET: process.env.COOKIE_SECRET || "development-insecure-cookie-secret-at-least-32-chars-long",
       PLATFORM_FEE_BPS: 2000,
       AUTO_COMPLETE_DELAY_HOURS: 72,

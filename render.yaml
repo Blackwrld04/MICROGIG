@@ -5,7 +5,8 @@ services:
     name: microgig-api
     runtime: node
     rootDir: apps/api
-    buildCommand: npm install
+    # dist/ is git-ignored, so compile here; --include=dev keeps tsc even with NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
@@ -29,6 +30,10 @@ services:
         generateValue: true
       - key: COOKIE_SECRET
         generateValue: true
+      - key: TRUST_PROXY_HOPS
+        value: "2" # Vercel rewrite -> Render load balancer -> API
+      - key: STORAGE_PUBLIC_URL
+        sync: false
       - key: S3_REGION
         value: auto
       - key: S3_ENDPOINT

@@ -1,17 +1,30 @@
 # microgig API (`apps/api`)
 
-The backend: deploys to **Render** or **Railway**, separately from the frontend on Vercel.
-
-> **Status: placeholder.** `src/server.mjs` only answers `GET /api/v1/health` and returns `501` for
-> everything else. The backend owner picks the framework and replaces it. Keep the health route and `PORT`.
+The backend: Fastify 4 + Drizzle ORM on PostgreSQL. It deploys to **Render** or **Railway**,
+separately from the frontend on Vercel.
 
 ## Run locally
 
 ```bash
-npm --prefix apps/api run dev     # http://localhost:4000/api/v1/health
+npm --prefix apps/api install
+npm --prefix apps/api run db:migrate   # applies drizzle/0000…0005
+ADMIN_PASSWORD='choose-a-long-one' npm --prefix apps/api run db:seed
+npm --prefix apps/api run dev          # http://localhost:4000/api/v1/health
 ```
 
-Credentials come from the **single repo-root `.env`** (template: `/.env.example`, section `[API]`).
+Settings come from the **single repo-root `.env`** (template: `/.env.example`, section `[API]`).
+Without an email provider, development prints every email (sign-up codes included) to the API log.
+
+## Tests
+
+```bash
+npm --prefix apps/api test             # unit tests; the integration suite is skipped
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/microgig_test npm --prefix apps/api test
+```
+
+The integration suite (`test/integration`) **drops and recreates the `public` schema** of
+`TEST_DATABASE_URL`, runs the migrations and the seed, then drives the real app with `app.inject`
+and an in-process fake S3. Use a throwaway database.
 
 ## Deploy
 
@@ -20,53 +33,66 @@ Credentials come from the **single repo-root `.env`** (template: `/.env.example`
 | Render | New → Blueprint → this repo. Uses `/render.yaml` (`rootDir: apps/api`). Fill the `sync: false` secrets in the dashboard. |
 | Railway | New service → this repo → Settings → Root Directory `apps/api`. Uses `apps/api/railway.json`. Add the `[API]` variables from `.env.example`. |
 
+Run `npm run db:migrate` against the production database before starting a new version.
+The cron jobs run inside the API process and take a Postgres advisory lock each, so running
+several instances is safe.
+
 ## How the frontend talks to this API
 
 ```
 Browser ──► https://<app>.vercel.app/api/v1/*  ──(Vercel rewrite)──►  https://<api>.onrender.com/api/v1/*
 ```
 
-- The browser **never calls this API's domain directly**. The frontend proxies `/api/v1/*` here
-  (`apps/web/next.config.mjs`, active when `NEXT_PUBLIC_USE_MOCKS="false"` and `API_URL` is set).
-- So cookies this API sets land on the **frontend's** domain and are first-party. No CORS or
-  `SameSite=None` needed. Set cookies **without a `Domain` attribute**; the PRD's
-  `__Host-access_token` / `__Host-refresh_token` names (HttpOnly, Secure, Path=/) work as-is.
-- Trust the proxy headers (`X-Forwarded-For`, `X-Forwarded-Proto`) for rate-limit keys and session IPs.
+- The browser never calls this API's domain directly, so the `sid` session cookie is first-party
+  on the frontend's domain (HttpOnly, SameSite=Lax, 30 days, no `Domain` attribute).
+- Rate limits key on the client IP from `X-Forwarded-For`. Set `TRUST_PROXY_HOPS` to the number
+  of proxies in front of the API (2 for Vercel → Render), otherwise every user shares one limit.
 - Server Components also call `API_URL` directly and forward the user's `Cookie` header.
-- CORS: only needed as a fallback. Allow exactly `WEB_ORIGIN` with credentials if you enable it.
 
-## What the frontend expects (contract)
+## Conventions
 
-Shapes are defined as Zod schemas in `apps/web/src/modules/*/contracts.ts`. Match them, or tell the
-frontend owner what changed.
+- **Prefix:** everything under `/api/v1`.
+- **Errors:** `{ "error": { "message": string, "fieldErrors"?: { [field]: string } } }`.
+- **Money:** integer cents. Fees use round-half-up (`lib/money.ts`); every ledger transaction sums
+  to zero (checked in code and by a deferred trigger); the nightly audit checks the invariants.
+- **Accounts are client XOR freelancer**, chosen at sign-up.
+- **Idempotency:** `POST /orders`, `/orders/:id/complete`, `/orders/:id/dispute`, `/wallet/topup`
+  and `/wallet/withdraw` accept an `Idempotency-Key` header. A retry replays the first response
+  (`Idempotent-Replayed: true`); the same key with a different body is a 422.
 
-- **Prefix:** everything under `/api/v1` (PRD §12).
-- **Errors:** `{ "error": { "message": string, "fieldErrors"?: { [field]: string } } }` with status
-  401 / 402 / 403 / 404 / 409 / 422 / 429 as in PRD §12 and Appendix D.
-- **Accounts are client XOR freelancer** (deliberate change from PRD §3.1):
-  - `users.account_type` = `CLIENT` | `FREELANCER`, set at registration, never changes.
-  - `POST /api/v1/auth/register` body: `{ accountType, email, password, fullName }`.
-  - `GET /api/v1/auth/me` → `{ id, email, fullName, accountType, isAdmin, isSeller }`
-    (`isSeller` = `accountType === "FREELANCER"`).
-  - Only clients may place orders; only freelancers may create gigs or deliver.
-- **Endpoints the frontend already calls** (demo versions live in `apps/web/src/app/api/v1`):
+## Security notes
+
+- **Sign-up codes:** 6 digits from a CSPRNG, stored only as a keyed SHA-256, valid 15 minutes,
+  5 guesses, one email per address per minute and 5 per hour. `send-code` answers the same for
+  new and existing emails; an existing account gets a "sign in instead" email, never a code.
+- **Login:** 10/min per IP + email; 5 failures lock the account for 15 minutes.
+- **Deliveries:** the server downloads each upload and checks size, SHA-256, type (magic bytes),
+  and reads ZIP file trees itself. Buyers get the storage key (and so the download) only after
+  `COMPLETED`; image deliveries get a watermarked WEBP preview at `/deliveries/:id/preview`.
+- **Unverified sellers** (SEL-02) are hidden from search, gig and seller pages, and can't be ordered.
+- **Emails** are an outbox: rows are written in the same transaction as the change and sent by
+  the dispatcher after commit, with retries.
+
+## Endpoints
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/auth/register`, `/auth/login`, `/auth/logout` | Set / clear session cookies |
-| GET | `/auth/me` | Current user or 401 |
+| POST | `/auth/send-code`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/logout-all` | Session cookie `sid` |
+| GET | `/auth/me`, `/me/sessions`; DELETE `/me/sessions/:id`, `/me/sessions` | |
 | GET | `/gigs?category=&subcategory=&search=&sort=&page=` | `{ gigs, total, page }` |
-| GET | `/gigs/:slug` | Gig detail |
-| GET | `/gigs/:id/more-from-seller` | Up to 5 gigs |
-| GET | `/sellers/:id` | Public seller page (not in PRD §12, added) |
-| GET | `/orders/user/me?tab=&q=` | `{ counts, orders }` for the caller's side |
-| GET | `/orders/:id` | Order workspace, participant or admin only (403/404 otherwise) |
-| GET | `/inbox` | Message threads for the caller (not in PRD §12, added) |
-| GET | `/notifications` | `{ unreadCount, notifications }` |
-| GET | `/wallet` | Client or freelancer wallet summary + activity |
-| GET | `/me/dashboard`, `/me/seller-profile`, `/me/sessions` | Freelancer / account pages |
-| GET | `/notification-prefs` | NOT-02 matrix |
-| GET | `/admin/verifications`, `/admin/disputes` | Admin only (not in PRD §12, added) |
-
-Order actions, wallet top-up/withdraw, favorites, messages and admin decisions are simulated in the
-browser in demo mode; each call site is marked `TODO` with the PRD endpoint it should hit.
+| GET | `/gigs/:slug`, `/gigs/:id/more-from-seller`, `/sellers/:id` | |
+| POST / PUT | `/gigs`, `/gigs/:id` | Freelancer. PUT edits any field, or `status` |
+| POST | `/gigs/:id/favorite` | |
+| GET / PUT / POST | `/me/seller-profile`, `/me/seller-profile/submit`, `/me/dashboard` | Freelancer |
+| POST | `/orders` | Client, `Idempotency-Key` |
+| GET | `/orders/user/me?tab=&q=`, `/orders/:id` | Participant or admin |
+| POST | `/orders/:id/requirements`, `/deliveries`, `/complete`, `/revision`, `/cancel`, `/dispute`, `/review`, `/star` | |
+| GET / POST | `/orders/:id/messages` | 30/min per user |
+| POST | `/deliveries/presign-upload`, `/uploads/presign` | Freelancer, 20/h per user |
+| GET | `/deliveries/:fileKey/download`, `/deliveries/:id/preview` | |
+| GET | `/inbox`, `/notifications`; POST `/notifications/read` | |
+| GET / PUT | `/notification-prefs` | |
+| GET | `/wallet`, `/wallet/activity?format=csv` | |
+| POST | `/wallet/topup` (client), `/wallet/withdraw` (freelancer) | `Idempotency-Key` |
+| GET / PATCH / POST | `/admin/verifications`, `/admin/verifications/:id`, `/admin/disputes`, `/admin/disputes/:id/resolve` | Admin |
+| GET | `/health` | |

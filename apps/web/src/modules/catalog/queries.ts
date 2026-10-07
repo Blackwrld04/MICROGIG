@@ -5,7 +5,8 @@ import { GIG_PAGE_SIZE, type GigCard, type GigDetail, type GigSearchQuery, type 
 
 /*
  * Catalog reads used by Server Components.
- * TODO(catalog owner): replace the fixture bodies with Prisma queries. Keep the signatures.
+ * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
+ * the backend through src/lib/api/server-data.ts; keep the return shapes in sync with it.
  */
 
 export const PAGE_SIZE = GIG_PAGE_SIZE;

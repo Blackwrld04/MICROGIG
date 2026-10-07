@@ -15,7 +15,7 @@ import { formatCents } from "@/lib/money";
 import { queryKeys } from "@/lib/query/keys";
 import { queries } from "@/lib/query/queries";
 import { USE_MOCKS } from "@/mocks/config";
-import { sendOrderAction } from "@/modules/orders/api";
+import { postOrderMessage, sendOrderAction } from "@/modules/orders/api";
 import { toast } from "@/stores/toast-store";
 import { formatDate, isLate } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -124,15 +124,16 @@ function Workspace({ order, readOnly, serverNow }: { order: OrderDetail; readOnl
   });
 
   const sendMessage = useMutation({
-    mutationFn: async (m: OrderDetail["messages"][number]) => {
-      if (!USE_MOCKS) await api(`/orders/${order.id}/messages`, { method: "POST", body: { body: m.body, attachmentKey: null } });
-      return m;
-    },
+    mutationFn: async (m: OrderDetail["messages"][number]) => (USE_MOCKS ? null : postOrderMessage(order.id, m)),
     onMutate: (m) => setOrder((o) => ({ ...o, messages: [...o.messages, m] })), // optimistic
-    onSuccess: () => {
+    onSuccess: (leakageWarning) => {
+      if (leakageWarning) toast(leakageWarning, "warning");
       if (!USE_MOCKS) void queryClient.invalidateQueries({ queryKey: key });
     },
-    onError: () => toast("Your message was not sent. Please try again.", "danger"),
+    onError: (_err, m) => {
+      setOrder((o) => ({ ...o, messages: o.messages.filter((x) => x.id !== m.id) })); // roll back
+      toast("Your message was not sent. Please try again.", "danger");
+    },
   });
 
   const statusKey = useChangeKey(order.status); // pop the badge when the order moves on

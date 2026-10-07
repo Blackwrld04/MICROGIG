@@ -8,7 +8,7 @@ import { Avatar } from "@/components/common/avatar";
 import { MessageThread } from "@/components/order/message-thread";
 import { OrderStatusBadge } from "@/components/order/order-status-badge";
 import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api/client";
+import { postOrderMessage } from "@/modules/orders/api";
 import type { InboxThread } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query/keys";
 import { queries } from "@/lib/query/queries";
@@ -60,18 +60,20 @@ export function Inbox({ initialThreadId, serverNow }: { initialThreadId?: string
   const patch = (id: string, change: Partial<InboxThread>) =>
     queryClient.setQueryData<InboxThread[]>(queryKeys.inbox, (all) => all?.map((t) => (t.orderId === id ? { ...t, ...change } : t)));
 
-  // TODO(messaging owner): read/star/archive endpoints aren't in PRD §12; demo keeps them client-side.
+  // Read/star/archive stay client-side: the backend has no endpoints for them yet (and returns unreadCount 0).
   const send = useMutation({
-    mutationFn: async ({ thread, message }: { thread: InboxThread; message: InboxThread["messages"][number] }) => {
-      if (!USE_MOCKS) await api(`/orders/${thread.orderId}/messages`, { method: "POST", body: { body: message.body, attachmentKey: null } });
-      return message;
-    },
+    mutationFn: async ({ thread, message }: { thread: InboxThread; message: InboxThread["messages"][number] }) =>
+      USE_MOCKS ? null : postOrderMessage(thread.orderId, message),
     onMutate: ({ thread, message }) =>
       patch(thread.orderId, { messages: [...thread.messages, message], lastActivityAt: message.createdAt, archived: false }),
-    onSuccess: () => {
+    onSuccess: (leakageWarning) => {
+      if (leakageWarning) toast(leakageWarning, "warning");
       if (!USE_MOCKS) void queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
     },
-    onError: () => toast("Your message was not sent. Please try again.", "danger"),
+    onError: (_err, { thread, message }) => {
+      patch(thread.orderId, { messages: thread.messages.filter((x) => x.id !== message.id) }); // roll back
+      toast("Your message was not sent. Please try again.", "danger");
+    },
   });
 
   function open(id: string) {

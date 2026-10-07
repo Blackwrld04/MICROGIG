@@ -39,7 +39,7 @@ const VERIFICATION_TEXT: Record<VerificationStatus, { variant: "info" | "success
 
 /**
  * Seller profile — SEL-01, and ID verification stub — SEL-02.
- * TODO: PUT /api/v1/me/seller-profile and POST /api/v1/me/seller-profile/submit.
+ * Real mode: PUT /api/v1/me/seller-profile and POST /api/v1/me/seller-profile/submit.
  */
 export function SellerProfileForm() {
   const { data } = useQuery(queries.sellerProfile());

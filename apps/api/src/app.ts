@@ -3,7 +3,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { env } from "./env.js";
-import { errorHandler, notFound } from "./errors.js";
+import { ApiError, errorHandler, notFound } from "./errors.js";
 import { getRedisClient } from "./lib/redis.js";
 import authenticatePlugin, {
   requireAuth,
@@ -28,11 +28,11 @@ import {
 
 export async function buildApp() {
   const fastify = Fastify({
-    trustProxy: 1,
+    trustProxy: env.TRUST_PROXY_HOPS,
     logger: {
-      level: env.NODE_ENV === "production" ? "info" : "debug",
+      level: env.NODE_ENV === "production" ? "info" : env.NODE_ENV === "test" ? "warn" : "debug",
       transport:
-        env.NODE_ENV !== "production"
+        env.NODE_ENV === "development"
           ? { target: "pino-pretty", options: { colorize: true } }
           : undefined,
     },
@@ -48,13 +48,10 @@ export async function buildApp() {
     allowList: (req) => {
       return req.url === "/api/v1/health";
     },
-    errorResponseBuilder: (_req, context) => ({
-      error: {
-        message: "Too many requests. Please slow down and try again shortly.",
-        statusCode: 429,
-        retryAfter: context.after,
-      },
-    }),
+    // The plugin *throws* what this returns, so it must be an error with a status code;
+    // a plain object reached the error handler as a 500. Retry-After is set by the plugin.
+    errorResponseBuilder: (_req, context) =>
+      new ApiError(`Too many requests. Please try again in ${context.after}.`, 429),
   });
 
   await fastify.register(cookie, {

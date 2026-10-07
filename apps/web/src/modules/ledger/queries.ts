@@ -6,7 +6,8 @@ import type { ClientWalletSummary, WalletSummary } from "./contracts";
 
 /*
  * Wallet reads — PRD §11.6.
- * TODO(ledger owner): SUM(amount) per ledger account; keep the return shapes.
+ * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
+ * the backend through src/lib/api/server-data.ts; keep the return shapes in sync with it.
  */
 
 const IN_ESCROW = ["PENDING_REQUIREMENTS", "IN_PROGRESS", "DELIVERED", "IN_REVISION", "DISPUTED"];

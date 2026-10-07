@@ -32,8 +32,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get("/admin/disputes", async (req, reply) => {
-    requireAdmin(req);
-    return reply.send(await listDisputedOrders());
+    const admin = requireAdmin(req);
+    return reply.send(await listDisputedOrders(admin));
   });
 
   fastify.post("/admin/disputes/:id/resolve", async (req, reply) => {

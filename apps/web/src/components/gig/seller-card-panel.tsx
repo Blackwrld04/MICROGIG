@@ -18,9 +18,12 @@ export function SellerCardPanel({
   const stats = [
     ["From", seller.country],
     ["Member since", formatMonthYear(seller.memberSince)],
-    ["Avg. response time", `${seller.avgResponseHours} ${seller.avgResponseHours === 1 ? "hour" : "hours"}`],
+    [
+      "Avg. response time",
+      seller.avgResponseHours === null ? "No replies yet" : `${seller.avgResponseHours} ${seller.avgResponseHours === 1 ? "hour" : "hours"}`,
+    ],
     ["Last delivery", seller.lastDeliveryAt ? formatRelative(seller.lastDeliveryAt, nowMs) : "No deliveries yet"],
-    ["Order completion rate", `${seller.completionRate}%`],
+    ["Order completion rate", seller.completionRate === null ? "No orders yet" : `${seller.completionRate}%`],
     ["Languages", seller.languages.map((l) => `${l.language} (${PROFICIENCY_LABELS[l.proficiency]})`).join(", ")],
   ];
   return (

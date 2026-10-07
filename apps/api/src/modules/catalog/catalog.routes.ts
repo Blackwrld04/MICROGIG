@@ -6,7 +6,7 @@ import {
   createGig,
   getMoreFromSeller,
   toggleGigFavorite,
-  updateGigStatus,
+  updateGig,
 } from "./catalog.service.js";
 import { requireAuth, requireRole } from "../../plugins/authenticate.js";
 import { notFound, unprocessable } from "../../errors.js";
@@ -32,8 +32,14 @@ const createGigBody = z.object({
     }),
   ).max(5),
   requirementsPrompt: z.array(z.string().trim().min(1)).min(1).max(3),
-  images:             z.array(z.string().url()).optional(),
+  images:             z.array(z.string().url().refine((u) => u.startsWith("https://") || u.startsWith("http://localhost"), "Images must use https")).max(10).optional(),
 });
+
+// PUT /gigs/:id: any subset of the create fields, plus pausing/publishing.
+const updateGigBody = createGigBody
+  .partial()
+  .extend({ status: z.enum(["PUBLISHED", "PAUSED"]).optional() })
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 
 export async function catalogRoutes(fastify: FastifyInstance) {
   fastify.get("/gigs", async (req, reply) => {
@@ -58,7 +64,7 @@ export async function catalogRoutes(fastify: FastifyInstance) {
 
   fastify.get("/gigs/:slug", async (req, reply) => {
     const { slug } = req.params as { slug: string };
-    const gig = await getGigBySlug(slug);
+    const gig = await getGigBySlug(slug, req.user);
     if (!gig) throw notFound("Gig not found");
     return reply.send(gig);
   });
@@ -93,10 +99,14 @@ export async function catalogRoutes(fastify: FastifyInstance) {
   fastify.put("/gigs/:id", async (req, reply) => {
     const user = requireRole(req, "FREELANCER");
     const { id } = req.params as { id: string };
-    const schema = z.object({ status: z.enum(["PUBLISHED", "PAUSED"]) });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) throw unprocessable("Invalid gig status");
-    const updated = await updateGigStatus(user.id, id, parsed.data.status);
+    const parsed = updateGigBody.safeParse(req.body);
+    if (!parsed.success) {
+      const fieldErrors = Object.fromEntries(
+        Object.entries(parsed.error.flatten().fieldErrors).map(([k, v]) => [k, v?.[0] ?? "Invalid"]),
+      );
+      throw unprocessable(parsed.error.flatten().formErrors[0] ?? "Validation failed", fieldErrors);
+    }
+    const updated = await updateGig(user.id, id, parsed.data);
     return reply.send(updated);
   });
 }

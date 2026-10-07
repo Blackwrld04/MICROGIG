@@ -23,7 +23,18 @@ export interface SendEmailOptions {
   text?: string;
 }
 
-export async function sendTransactionalEmail(options: SendEmailOptions) {
+export type EmailResult =
+  | { status: "sent"; id?: string }
+  /** No provider configured. Outside production the message is logged instead. */
+  | { status: "not_configured" }
+  | { status: "failed"; error: string };
+
+export function emailConfigured() {
+  return Boolean(resend || smtpTransporter);
+}
+
+/** Sends one email and reports what happened, so callers can tell the user or retry. */
+export async function sendTransactionalEmail(options: SendEmailOptions): Promise<EmailResult> {
   // 1. Resend API
   if (resend) {
     try {
@@ -34,15 +45,10 @@ export async function sendTransactionalEmail(options: SendEmailOptions) {
         html: options.html,
         text: options.text,
       });
-
-      if (error) {
-        console.error("[Resend Email Error]:", error);
-        return null;
-      }
-      return data;
+      if (error) return { status: "failed", error: error.message ?? String(error) };
+      return { status: "sent", id: data?.id };
     } catch (err) {
-      console.error("[Resend Error Exception]:", err);
-      return null;
+      return { status: "failed", error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -56,17 +62,16 @@ export async function sendTransactionalEmail(options: SendEmailOptions) {
         html: options.html,
         text: options.text,
       });
-      console.log(`[SMTP Email Sent] MessageId: ${info.messageId} to ${options.to}`);
-      return info;
+      return { status: "sent", id: info.messageId };
     } catch (err) {
-      console.error("[SMTP Error Exception]:", err);
-      return null;
+      return { status: "failed", error: err instanceof Error ? err.message : String(err) };
     }
   }
 
-  // 3. Fallback: Simulation in development
+  // 3. No provider. Development logs the email so flows can be tested locally.
   if (env.NODE_ENV !== "production") {
-    console.log(`[Email Simulation] To: ${options.to} | Subject: "${options.subject}"`);
+    console.log(`[Email Simulation] To: ${options.to} | Subject: "${options.subject}"
+${options.text ?? ""}`);
   }
-  return { id: "simulated-email-id" };
+  return { status: "not_configured" };
 }

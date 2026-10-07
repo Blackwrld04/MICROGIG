@@ -21,6 +21,19 @@ export async function seedDatabase() {
     throw new Error("Seeding disabled in production");
   }
 
+  // No built-in passwords: the admin password must be provided, and demo users get one only
+  // outside production (or from SEED_USER_PASSWORD). Passwords are never printed.
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword || adminPassword.length < 12) {
+    throw new Error("Set ADMIN_PASSWORD (at least 12 characters) before seeding.");
+  }
+  const isProd = process.env.NODE_ENV === "production";
+  const demoPassword = (fallback: string) => {
+    if (process.env.SEED_USER_PASSWORD) return process.env.SEED_USER_PASSWORD;
+    if (isProd) throw new Error("Set SEED_USER_PASSWORD to seed demo users in production.");
+    return fallback;
+  };
+
   console.log("🌱 Starting Micro-Gig database seeding...");
 
   // 1. Seed System Ledger Accounts (ESCROW, PLATFORM_REVENUE, BUYER_FUNDING)
@@ -46,7 +59,6 @@ export async function seedDatabase() {
   const adminEmail = "admin@microgig.dev";
   const [existingAdmin] = await db.select().from(users).where(eq(users.email, adminEmail)).limit(1);
   if (!existingAdmin) {
-    const adminPassword = process.env.ADMIN_PASSWORD || "Admin123!";
     const passwordHash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
     const adminId = crypto.randomUUID();
     await db.insert(users).values({
@@ -56,6 +68,7 @@ export async function seedDatabase() {
       fullName: "Platform Administrator",
       accountType: "CLIENT",
       isAdmin: true,
+      emailVerified: true,
     });
 
     await db.insert(ledgerAccounts).values({
@@ -70,7 +83,7 @@ export async function seedDatabase() {
   const clientEmail = "client@microgig.dev";
   let clientUser = (await db.select().from(users).where(eq(users.email, clientEmail)).limit(1))[0];
   if (!clientUser) {
-    const passwordHash = await bcrypt.hash("Client123!", BCRYPT_ROUNDS);
+    const passwordHash = await bcrypt.hash(demoPassword("Client123!"), BCRYPT_ROUNDS);
     const clientId = crypto.randomUUID();
     await db.insert(users).values({
       id: clientId,
@@ -79,6 +92,7 @@ export async function seedDatabase() {
       fullName: "Alex Rivera",
       accountType: "CLIENT",
       isAdmin: false,
+      emailVerified: true,
     });
 
     const availAcct = (await db.insert(ledgerAccounts).values({
@@ -100,7 +114,7 @@ export async function seedDatabase() {
     ]);
 
     clientUser = (await db.select().from(users).where(eq(users.id, clientId)).limit(1))[0];
-    console.log("  ✓ Created Client user: client@microgig.dev / Client123! ($100 balance)");
+    console.log("  ✓ Created Client user: client@microgig.dev ($100 balance)");
   }
 
   // 4. Freelancer User (Sara Connor)
@@ -109,7 +123,7 @@ export async function seedDatabase() {
   let sellerProfileId = "";
 
   if (!sellerUser) {
-    const passwordHash = await bcrypt.hash("Seller123!", BCRYPT_ROUNDS);
+    const passwordHash = await bcrypt.hash(demoPassword("Seller123!"), BCRYPT_ROUNDS);
     const sellerId = crypto.randomUUID();
     await db.insert(users).values({
       id: sellerId,
@@ -118,6 +132,7 @@ export async function seedDatabase() {
       fullName: "Sara Connor",
       accountType: "FREELANCER",
       isAdmin: false,
+      emailVerified: true,
     });
 
     await db.insert(ledgerAccounts).values([
@@ -153,7 +168,7 @@ export async function seedDatabase() {
     ]);
 
     sellerUser = (await db.select().from(users).where(eq(users.id, sellerId)).limit(1))[0];
-    console.log("  ✓ Created Freelancer user: seller@microgig.dev / Seller123! (Verified profile)");
+    console.log("  ✓ Created Freelancer user: seller@microgig.dev (verified profile)");
   } else {
     const [profile] = await db.select({ id: sellerProfiles.id }).from(sellerProfiles).where(eq(sellerProfiles.userId, sellerUser.id)).limit(1);
     sellerProfileId = profile?.id ?? "";
