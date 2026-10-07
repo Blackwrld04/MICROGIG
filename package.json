@@ -4,6 +4,7 @@
   "description": "microgig monorepo: apps/web (Next.js on Vercel) and apps/api (backend on Render/Railway). Each app is standalone with its own package.json and node_modules.",
   "scripts": {
     "setup": "npm --prefix apps/web install && npm --prefix apps/api install",
+    "postinstall": "npm --prefix apps/web install && npm --prefix apps/api install",
     "dev": "npm --prefix apps/web run dev",
     "dev:api": "npm --prefix apps/api run dev",
     "build": "npm --prefix apps/web run build && npm --prefix apps/api run build",
