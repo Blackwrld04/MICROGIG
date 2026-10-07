@@ -17,5 +17,10 @@
     "db:push": "npm --prefix apps/api run db:push",
     "db:migrate": "npm --prefix apps/api run db:migrate",
     "db:seed": "npm --prefix apps/api run db:seed"
+  },
+  "devDependencies": {
+    "next": "14.2.35",
+    "react": "^18",
+    "react-dom": "^18"
   }
 }
