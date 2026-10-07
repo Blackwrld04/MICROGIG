@@ -26,7 +26,7 @@ MicroGig eliminates the frictional overhead of traditional freelance platforms. 
 
 **Fixed price under $50. Turnaround in 24–48 hours. Zero bidding. Zero proposals. Automated double-entry escrow.**
 
-[Live Web App (Demo)](http://localhost:3000) · [Manage Orders Workspace](/orders) · [Seller Onboarding & Wizard](/seller/dashboard) · [Explore the Platform](#explore-the-platform) · [Binding PRD Specification](PROJECT_REQUIREMENTS_DOCUMENT.md)
+[Live Web App (Demo)](http://localhost:3000) · [Production Deployment Guide](DEPLOYMENT.md) · [Manage Orders Workspace](/orders) · [Seller Onboarding & Wizard](/seller/dashboard) · [Binding PRD Specification](PROJECT_REQUIREMENTS_DOCUMENT.md)
 
 **Service-as-a-Product (SaaP) — Instant Checkout, Deterministic Order Transitions, and Zero-Drift Financial Accounting.**
 

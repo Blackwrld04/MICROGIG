@@ -1,12 +1,12 @@
-# Render Blueprint for the backend (apps/api). The frontend (apps/web) deploys to Vercel.
-# Render → New → Blueprint → pick this repo. Secrets marked `sync: false` are entered in the dashboard.
+# Render Blueprint for the backend (apps/api) + managed PostgreSQL.
+# Render → New → Blueprint → select this repository.
 services:
   - type: web
     name: microgig-api
     runtime: node
     rootDir: apps/api
     # dist/ is git-ignored, so compile here; --include=dev keeps tsc even with NODE_ENV=production.
-    buildCommand: npm ci --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate
     startCommand: npm start
     healthCheckPath: /api/v1/health
     envVars:
@@ -15,25 +15,35 @@ services:
       - key: WEB_ORIGIN
         sync: false # e.g. https://<your-project>.vercel.app
       - key: DATABASE_URL
-        sync: false
-      - key: DIRECT_URL
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
+        fromDatabase:
+          name: microgig-postgres
+          property: connectionString
+      - key: COOKIE_SECRET
+        generateValue: true
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
-      - key: COOKIE_SECRET
-        generateValue: true
       - key: TRUST_PROXY_HOPS
         value: "2" # Vercel rewrite -> Render load balancer -> API
-      - key: STORAGE_PUBLIC_URL
+      - key: REDIS_URL
         sync: false
+      # Transactional Email (Resend or Gmail SMTP)
+      - key: EMAIL_FROM
+        value: MicroGig <notifications@microgig.dev>
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_SECURE
+        value: "true"
+      # S3 / Cloudflare R2 file storage
       - key: S3_REGION
         value: auto
       - key: S3_ENDPOINT
@@ -46,10 +56,9 @@ services:
         value: microgig-showcase-public
       - key: S3_PRIVATE_BUCKET_NAME
         value: microgig-deliverables-private
-      - key: EMAIL_FROM
-        value: microgig <notifications@microgig.dev>
-      - key: RESEND_API_KEY
+      - key: STORAGE_PUBLIC_URL
         sync: false
+      # Business logic constants
       - key: PLATFORM_FEE_BPS
         value: "2000"
       - key: AUTO_COMPLETE_DELAY_HOURS
@@ -58,11 +67,9 @@ services:
         value: "24"
       - key: CLEARING_PERIOD_DAYS
         value: "3"
-      - key: SKIP_CLEARING_PERIOD
-        value: "false"
-      - key: ENABLE_DISINTERMEDIATION_WARNING
-        value: "true"
-      - key: ENABLE_CLAMAV_SCAN
-        value: "false"
-  # The BullMQ worker (npm run worker, PRD Appendix E) will be a second service here
-  # (type: worker, rootDir: apps/api) once the backend owner adds it.
+
+databases:
+  - name: microgig-postgres
+    databaseName: microgig
+    user: microgig
+    plan: free
