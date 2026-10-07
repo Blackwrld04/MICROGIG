@@ -10,7 +10,7 @@
     "start": "npm --prefix apps/web run start",
     "lint": "npm --prefix apps/web run lint",
     "typecheck": "npm --prefix apps/web run typecheck && npm --prefix apps/api run typecheck",
-    "test": "npm --prefix apps/web run test",
+    "test": "npm --prefix apps/web run test && npm --prefix apps/api run test",
     "test:e2e": "npm --prefix apps/web run test:e2e",
     "db:generate": "npm --prefix apps/api run db:generate",
     "db:push": "npm --prefix apps/api run db:push",
