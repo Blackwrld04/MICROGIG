@@ -42,7 +42,7 @@ export const EMPTY_SELLER_PROFILE: SellerProfileResponse = {
 
 export const EMPTY_DASHBOARD: DashboardResponse = {
   checklist: { profileComplete: false, verification: "NOT_SUBMITTED", hasGig: false, hasPublishedGig: false },
-  stats: { netEarningsCents: 0, avgSellingPriceCents: 0, onTimeDeliveryRate: 100, completionRate: 100 },
+  stats: { netEarningsCents: 0, avgSellingPriceCents: null, onTimeDeliveryRate: null, completionRate: null },
   activeOrders: 0,
   completedOrders: 0,
   gigs: [],

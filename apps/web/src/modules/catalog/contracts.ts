@@ -56,9 +56,11 @@ export interface SellerCard {
   headline: string;
   country: string;
   memberSince: string;
-  avgResponseHours: number;
+  /** null until the seller has replied to a buyer message. */
+  avgResponseHours: number | null;
   lastDeliveryAt: string | null;
-  completionRate: number;
+  /** null until the seller has a completed or cancelled order. */
+  completionRate: number | null;
   languages: { language: string; proficiency: LanguageProficiency }[];
 }
 

@@ -1,236 +1,224 @@
 import cron from "node-cron";
 import type { FastifyBaseLogger } from "fastify";
-import { db } from "../db/connection.js";
-import { orders, orderEvents, notifications, ledgerAccounts, ledgerEntries } from "../db/schema/index.js";
-import { eq, lte, gt, and, sql, isNull } from "drizzle-orm";
+import { db, lockConnection } from "../db/connection.js";
+import { orders, orderEvents, ledgerAccounts, ledgerEntries } from "../db/schema/index.js";
+import { eq, lte, gt, and, sql, isNull, inArray } from "drizzle-orm";
 import { env } from "../env.js";
-import { platformFeeCents, sellerNetCents, assertZeroSum } from "./money.js";
-import { createAndDispatchNotification } from "../modules/notifications/notifications.service.js";
+import { platformFeeCents, assertZeroSum } from "./money.js";
+import { createAndDispatchNotification, dispatchPendingEmails } from "../modules/notifications/notifications.service.js";
+import { purgeExpiredIdempotencyKeys } from "./idempotency.js";
+import { slaThresholdsReached, slaDedupeKey } from "./sla.js";
+
+const runningJobs = new Set<string>();
+
+/**
+ * Runs `job` unless it is already running, here or on another API instance (Postgres
+ * advisory lock), so scaling the API to several instances never double-processes anything.
+ */
+export async function withJobLock(name: string, log: FastifyBaseLogger, job: () => Promise<void>) {
+  if (runningJobs.has(name)) return;
+  runningJobs.add(name);
+  const key = `microgig:${name}`;
+  let locked = false;
+  try {
+    const [row] = await lockConnection<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(hashtext(${key})) AS locked`;
+    locked = Boolean(row?.locked);
+    if (locked) await job();
+  } catch (err) {
+    log.error({ err }, `${name} job failed`);
+  } finally {
+    if (locked) await lockConnection`SELECT pg_advisory_unlock(hashtext(${key}))`.catch(() => undefined);
+    runningJobs.delete(name);
+  }
+}
+
+export async function autoCompleteDeliveredOrders(log: FastifyBaseLogger) {
+  const now = new Date();
+  const overdue = await db
+    .select({
+      id:          orders.id,
+      orderNumber: orders.orderNumber,
+      buyerId:     orders.buyerId,
+      sellerId:    orders.sellerId,
+      priceCents:  orders.priceCents,
+      feeRateBps:  orders.feeRateBps,
+    })
+    .from(orders)
+    .where(and(eq(orders.status, "DELIVERED"), lte(orders.autoCompleteAt, now)));
+
+  for (const order of overdue) {
+    await db.transaction(async (tx) => {
+      const result = await tx
+        .update(orders)
+        .set({ status: "COMPLETED", completedAt: now, autoCompleteAt: null, updatedAt: now })
+        .where(and(eq(orders.id, order.id), eq(orders.status, "DELIVERED")))
+        .returning({ id: orders.id });
+      if (result.length === 0) return;
+
+      await settleOrderCompletion(tx, order);
+      await tx.insert(orderEvents).values({
+        orderId: order.id,
+        label:   "Auto-completed",
+        actor:   "System",
+        detail:  `${env.AUTO_COMPLETE_DELAY_HOURS}-hour review window elapsed`,
+      });
+      await createAndDispatchNotification({
+        userId:  order.buyerId,
+        type:    "ORDER_COMPLETED",
+        orderId: order.id,
+        message: `Order #${order.orderNumber} was auto-completed. Leave a review!`,
+        tx,
+      });
+      await createAndDispatchNotification({
+        userId:  order.sellerId,
+        type:    "ORDER_COMPLETED",
+        orderId: order.id,
+        message: `Order #${order.orderNumber} was auto-completed. Your earnings are now clearing.`,
+        tx,
+      });
+      log.info({ orderId: order.id }, "Auto-completed order");
+    });
+  }
+}
+
+export async function clearMaturedFunds(log: FastifyBaseLogger) {
+  const clearingCutoff = new Date(Date.now() - env.CLEARING_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+
+  const toSettle = await db.execute(sql`
+    SELECT o.id AS order_id, o.seller_id
+    FROM orders o
+    WHERE o.status = 'COMPLETED'
+      AND o.completed_at <= ${clearingCutoff.toISOString()}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ledger_entries le
+        JOIN ledger_accounts la ON la.id = le.account_id
+        WHERE la.user_id    = o.seller_id
+          AND le.entry_type = 'CLEARING'
+          AND le.order_id   = o.id
+      )
+    LIMIT 50
+  `);
+
+  for (const row of toSettle as unknown as { order_id: string; seller_id: string }[]) {
+    // The actual amount credited to the seller's pending balance (split rulings credit less).
+    const [pendingCredit] = await db
+      .select({ totalCredited: sql<number>`COALESCE(SUM(${ledgerEntries.amountCents}), 0)` })
+      .from(ledgerEntries)
+      .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerEntries.accountId))
+      .where(
+        and(
+          eq(ledgerAccounts.userId, row.seller_id),
+          eq(ledgerAccounts.kind, "USER_PENDING"),
+          eq(ledgerEntries.orderId, row.order_id),
+          sql`${ledgerEntries.amountCents} > 0`,
+        ),
+      );
+
+    const amountToClear = Number(pendingCredit?.totalCredited ?? 0);
+    if (amountToClear > 0) {
+      await postClearingEntry(row.order_id, row.seller_id, amountToClear);
+      log.info({ orderId: row.order_id, amountToClear }, "Funds cleared to seller");
+    }
+  }
+}
+
+/** NOT-01 (7): late-delivery warnings at 50% and 90% of the SLA, and once it is overdue. */
+export async function sendSlaWarnings() {
+  const now = Date.now();
+  const active = await db
+    .select({
+      id:               orders.id,
+      orderNumber:      orders.orderNumber,
+      buyerId:          orders.buyerId,
+      sellerId:         orders.sellerId,
+      status:           orders.status,
+      deadline:         orders.deadline,
+      revisionDeadline: orders.revisionDeadline,
+      turnaroundHours:  orders.turnaroundHours,
+    })
+    .from(orders)
+    .where(inArray(orders.status, ["IN_PROGRESS", "IN_REVISION"]));
+
+  for (const order of active) {
+    const due = slaThresholdsReached(order, env.REVISION_DEADLINE_HOURS, now);
+    if (!due) continue;
+    const what = order.status === "IN_REVISION" ? "revision" : "delivery";
+    for (const threshold of due.thresholds) {
+      const key = slaDedupeKey(order.id, due.deadline, threshold);
+      if (threshold === 100) {
+        await createAndDispatchNotification({ userId: order.sellerId, type: "LATE_WARNING", orderId: order.id, dedupeKey: key, message: `Your ${what} for order #${order.orderNumber} is overdue.` });
+        await createAndDispatchNotification({ userId: order.buyerId, type: "LATE_WARNING", orderId: order.id, dedupeKey: key, message: `Order #${order.orderNumber} is past its ${what} deadline. After 24 more hours you can cancel for a full refund.` });
+      } else {
+        await createAndDispatchNotification({
+          userId: order.sellerId,
+          type: "LATE_WARNING",
+          orderId: order.id,
+          dedupeKey: key,
+          message: `${threshold}% of the ${what} time for order #${order.orderNumber} has passed. It's due ${due.deadline.toUTCString()}.`,
+        });
+      }
+    }
+  }
+}
+
+/** ORD-06: remind the buyer 24 hours before a delivery auto-completes. */
+export async function sendAutoCompleteWarnings(log: FastifyBaseLogger) {
+  const now = new Date();
+  const warningWindow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const approaching = await db
+    .select({ id: orders.id, orderNumber: orders.orderNumber, buyerId: orders.buyerId, autoCompleteAt: orders.autoCompleteAt })
+    .from(orders)
+    .where(and(eq(orders.status, "DELIVERED"), lte(orders.autoCompleteAt, warningWindow), gt(orders.autoCompleteAt, now)));
+
+  for (const order of approaching) {
+    const sent = await createAndDispatchNotification({
+      userId: order.buyerId,
+      type: "AUTO_COMPLETE_WARNING",
+      orderId: order.id,
+      dedupeKey: `autocomplete:${order.id}:${order.autoCompleteAt!.toISOString()}`,
+      message: `Order #${order.orderNumber} will be automatically accepted in less than 24 hours. Please review the deliverable!`,
+    });
+    if (sent) log.info({ orderId: order.id }, "Dispatched 24-hour auto-complete warning");
+  }
+}
+
+/** Review reminder: 24 hours after completion, if the buyer hasn't reviewed (REV-01 window). */
+export async function sendReviewReminders() {
+  const rows = (await db.execute(sql`
+    SELECT o.id, o.order_number, o.buyer_id
+    FROM orders o
+    WHERE o.status = 'COMPLETED'
+      AND o.completed_at <= now() - interval '24 hours'
+      AND o.completed_at >  now() - interval '14 days'
+      AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id)
+    LIMIT 200
+  `)) as unknown as { id: string; order_number: number; buyer_id: string }[];
+
+  for (const o of rows) {
+    await createAndDispatchNotification({
+      userId: o.buyer_id,
+      type: "REVIEW_REMINDER",
+      orderId: o.id,
+      dedupeKey: `review-reminder:${o.id}`,
+      message: `How did order #${o.order_number} go? You have until 14 days after completion to leave a review.`,
+    });
+  }
+}
 
 export function startReconcilerCron(log: FastifyBaseLogger) {
   log.info("Starting reconciler cron jobs...");
 
-  // ── Every 5 minutes: auto-complete overdue DELIVERED orders ──────────────
-  cron.schedule("*/5 * * * *", async () => {
-    try {
-      const now = new Date();
-      const overdue = await db
-        .select({
-          id:          orders.id,
-          orderNumber: orders.orderNumber,
-          buyerId:     orders.buyerId,
-          sellerId:    orders.sellerId,
-          priceCents:  orders.priceCents,
-          feeRateBps:  orders.feeRateBps,
-        })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.status, "DELIVERED"),
-            lte(orders.autoCompleteAt, now),
-          ),
-        );
-
-      for (const order of overdue) {
-        await db.transaction(async (tx) => {
-          const result = await tx
-            .update(orders)
-            .set({ status: "COMPLETED", completedAt: now, updatedAt: now })
-            .where(and(eq(orders.id, order.id), eq(orders.status, "DELIVERED")))
-            .returning({ id: orders.id });
-
-          if (result.length === 0) return;
-
-          await settleOrderCompletion(tx, order);
-
-          await tx.insert(orderEvents).values({
-            orderId: order.id,
-            label:   "Auto-completed",
-            actor:   "System",
-            detail:  "72-hour review window elapsed",
-          });
-
-          await createAndDispatchNotification({
-            userId:  order.buyerId,
-            type:    "ORDER_COMPLETED",
-            orderId: order.id,
-            message: `Order #${order.orderNumber} was auto-completed. Leave a review!`,
-            tx,
-          });
-
-          log.info({ orderId: order.id }, "Auto-completed order");
-        });
-      }
-    } catch (err) {
-      log.error({ err }, "Auto-complete cron failed");
-    }
-  });
-
-  // ── Every 10 minutes: clear USER_PENDING → USER_AVAILABLE (3-day hold) ──
-  cron.schedule("*/10 * * * *", async () => {
-    try {
-      const clearingCutoff = new Date(
-        Date.now() - env.CLEARING_PERIOD_DAYS * 24 * 60 * 60 * 1000,
-      );
-
-      const toSettle = await db.execute(sql`
-        SELECT
-          o.id          AS order_id,
-          o.seller_id,
-          o.price_cents,
-          o.fee_rate_bps
-        FROM orders o
-        WHERE o.status = 'COMPLETED'
-          AND o.completed_at <= ${clearingCutoff.toISOString()}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM ledger_entries le
-            JOIN ledger_accounts la ON la.id = le.account_id
-            WHERE la.user_id   = o.seller_id
-              AND le.entry_type = 'CLEARING'
-              AND le.order_id   = o.id
-          )
-        LIMIT 50
-      `);
-
-      for (const row of (toSettle as any[])) {
-        // Query the actual positive amount credited to seller's pending balance for this order (handles split dispute rulings accurately)
-        const [pendingCredit] = await db
-          .select({
-            totalCredited: sql<number>`COALESCE(SUM(${ledgerEntries.amountCents}), 0)`,
-          })
-          .from(ledgerEntries)
-          .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, ledgerEntries.accountId))
-          .where(
-            and(
-              eq(ledgerAccounts.userId, row.seller_id),
-              eq(ledgerAccounts.kind, "USER_PENDING"),
-              eq(ledgerEntries.orderId, row.order_id),
-              sql`${ledgerEntries.amountCents} > 0`,
-            ),
-          );
-
-        const amountToClear = Number(pendingCredit?.totalCredited ?? 0);
-        if (amountToClear > 0) {
-          await postClearingEntry(row.order_id, row.seller_id, amountToClear);
-          log.info({ orderId: row.order_id, amountToClear }, "Funds cleared to seller");
-        }
-      }
-    } catch (err) {
-      log.error({ err }, "Clearing cron failed");
-    }
-  });
-
-  // ── Hourly: emit LATE_WARNING notifications for overdue orders ────────────
-  cron.schedule("0 * * * *", async () => {
-    try {
-      const now = new Date();
-      const lateOrders = await db
-        .select({
-          id:          orders.id,
-          buyerId:     orders.buyerId,
-          sellerId:    orders.sellerId,
-          orderNumber: orders.orderNumber,
-        })
-        .from(orders)
-        .where(
-          and(
-            sql`${orders.status} IN ('IN_PROGRESS', 'IN_REVISION')`,
-            lte(orders.deadline, now),
-          ),
-        );
-
-      for (const order of lateOrders) {
-        const existing = await db
-          .select({ id: notifications.id })
-          .from(notifications)
-          .where(
-            and(
-              eq(notifications.orderId, order.id),
-              eq(notifications.type, "LATE_WARNING"),
-            ),
-          )
-          .limit(1);
-
-        if (existing.length > 0) continue;
-
-        await createAndDispatchNotification({
-          userId:  order.buyerId,
-          type:    "LATE_WARNING",
-          orderId: order.id,
-          message: `Order #${order.orderNumber} is past its delivery deadline.`,
-        });
-        await createAndDispatchNotification({
-          userId:  order.sellerId,
-          type:    "LATE_WARNING",
-          orderId: order.id,
-          message: `Your delivery for order #${order.orderNumber} is overdue.`,
-        });
-      }
-    } catch (err) {
-      log.error({ err }, "Late-warning cron failed");
-    }
-  });
-
-  // ── Hourly: 24-hour reminder before auto-completion (ORD-06) ─────────────
-  cron.schedule("0 * * * *", async () => {
-    try {
-      const now = new Date();
-      const warningWindow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-      const approaching = await db
-        .select({
-          id: orders.id,
-          orderNumber: orders.orderNumber,
-          buyerId: orders.buyerId,
-          autoCompleteAt: orders.autoCompleteAt,
-        })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.status, "DELIVERED"),
-            lte(orders.autoCompleteAt, warningWindow),
-            gt(orders.autoCompleteAt, now),
-          ),
-        );
-
-      for (const order of approaching) {
-        const existing = await db
-          .select({ id: notifications.id })
-          .from(notifications)
-          .where(
-            and(
-              eq(notifications.orderId, order.id),
-              eq(notifications.type, "AUTO_COMPLETE_WARNING"),
-            ),
-          )
-          .limit(1);
-
-        if (existing.length > 0) continue;
-
-        await createAndDispatchNotification({
-          userId: order.buyerId,
-          type: "AUTO_COMPLETE_WARNING",
-          orderId: order.id,
-          message: `Order #${order.orderNumber} will be automatically accepted in less than 24 hours. Please review the deliverable!`,
-        });
-        log.info({ orderId: order.id }, "Dispatched 24-hour auto-complete warning");
-      }
-    } catch (err) {
-      log.error({ err }, "Auto-complete warning cron failed");
-    }
-  });
-
-  // ── Midnight UTC: Ledger Invariant Audit Job (PRD Appendix E) ─────────────
-  cron.schedule("0 0 * * *", async () => {
-    try {
-      await runLedgerAudit(log);
-    } catch (err) {
-      log.error({ err }, "Ledger audit cron failed");
-    }
-  }, {
-    timezone: "UTC",
-  });
+  // Each job takes a Postgres advisory lock, so running several API instances is safe.
+  cron.schedule("*/5 * * * *", () => withJobLock("auto-complete", log, () => autoCompleteDeliveredOrders(log)));
+  cron.schedule("*/10 * * * *", () => withJobLock("clearing", log, () => clearMaturedFunds(log)));
+  cron.schedule("*/10 * * * *", () => withJobLock("sla-warnings", log, sendSlaWarnings));
+  cron.schedule("*/15 * * * *", () => withJobLock("auto-complete-warnings", log, () => sendAutoCompleteWarnings(log)));
+  cron.schedule("30 * * * *", () => withJobLock("review-reminders", log, sendReviewReminders));
+  // Email outbox fallback; normally emails go out within seconds of the commit.
+  cron.schedule("* * * * *", () => withJobLock("email-dispatch", log, async () => { await dispatchPendingEmails(); }));
+  cron.schedule("0 0 * * *", () => withJobLock("ledger-audit", log, async () => { await runLedgerAudit(log); }), { timezone: "UTC" });
+  cron.schedule("15 3 * * *", () => withJobLock("idempotency-purge", log, purgeExpiredIdempotencyKeys), { timezone: "UTC" });
 
   log.info("Reconciler cron jobs initialized");
 }

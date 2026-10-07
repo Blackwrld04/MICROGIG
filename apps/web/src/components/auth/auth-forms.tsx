@@ -150,8 +150,6 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
   const [infoMessage, setInfoMessage] = useState<string>();
-  const [emailChecking, setEmailChecking] = useState(false);
-  const [emailTaken, setEmailTaken] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -159,45 +157,6 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     const timer = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
     return () => clearInterval(timer);
   }, [cooldown]);
-
-  async function checkEmail(emailToCheck: string) {
-    const trimmed = emailToCheck.trim();
-    const valid = z.string().email().safeParse(trimmed);
-    if (!valid.success) return;
-
-    setEmailChecking(true);
-    try {
-      const res = await api<{ exists: boolean; message: string }>("/auth/check-email", {
-        method: "POST",
-        body: { email: trimmed },
-      });
-      if (res.exists) {
-        setEmailTaken(true);
-        setErrors((prev) => ({
-          ...prev,
-          email: "This email has already been used before. Please sign in or use a different email.",
-        }));
-      } else {
-        setEmailTaken(false);
-        setErrors((prev) => {
-          if (
-            prev.email?.includes("used before") ||
-            prev.email?.includes("already exists") ||
-            prev.email?.includes("already in use")
-          ) {
-            const next = { ...prev };
-            delete next.email;
-            return next;
-          }
-          return prev;
-        });
-      }
-    } catch {
-      // Don't block passively on network glitch
-    } finally {
-      setEmailChecking(false);
-    }
-  }
 
   const sendCode = useMutation({
     mutationFn: (email: string) =>
@@ -212,31 +171,22 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     onSuccess: (data) => {
       setCodeSent(true);
       setCooldown(60);
-      setEmailTaken(false);
       setErrors((prev) => {
         const nextErr = { ...prev };
         delete nextErr.email;
         delete nextErr.code;
         return nextErr;
       });
-      setInfoMessage(data.message || `We sent a 6-digit confirmation code to ${values.email}. Please check your inbox.`);
+      // The server answers the same way for new and existing emails (no account enumeration);
+      // an existing account gets a "sign in instead" email rather than a code.
+      setInfoMessage(
+        data.message ||
+          `If ${values.email} can be used, we've sent a 6-digit code to it. Already have an account? Check that email for a sign-in link.`,
+      );
     },
     onError: (err) => {
       const { message, fields } = apiFieldErrors(err);
-      if (
-        (err instanceof ApiError && err.status === 409) ||
-        message.toLowerCase().includes("already") ||
-        message.toLowerCase().includes("used") ||
-        fields.email?.toLowerCase().includes("already") ||
-        fields.email?.toLowerCase().includes("used")
-      ) {
-        const duplicateMsg = "This email has already been used before. Please sign in or use a different email.";
-        setEmailTaken(true);
-        setErrors((prev) => ({ ...prev, email: duplicateMsg }));
-        setFormError(duplicateMsg);
-        return;
-      }
-      setErrors(fields);
+      setErrors((prev) => ({ ...prev, ...fields }));
       setFormError(message);
     },
   });
@@ -253,17 +203,9 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     },
     onError: (err) => {
       const { message, fields } = apiFieldErrors(err);
-      if (
-        (err instanceof ApiError && err.status === 409) ||
-        message.toLowerCase().includes("already") ||
-        message.toLowerCase().includes("used") ||
-        fields.email?.toLowerCase().includes("already") ||
-        fields.email?.toLowerCase().includes("used")
-      ) {
-        const duplicateMsg = "This email has already been used before. Please sign in or use a different email.";
-        setEmailTaken(true);
-        setErrors((prev) => ({ ...prev, email: duplicateMsg }));
-        setFormError(duplicateMsg);
+      if (err instanceof ApiError && err.status === 409) {
+        setErrors((prev) => ({ ...prev, email: "This email already has an account. Please sign in instead." }));
+        setFormError("This email already has an account. Please sign in instead.");
         return;
       }
       setErrors(fields);
@@ -278,13 +220,6 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     const emailResult = z.string().email("Enter a valid email").safeParse(values.email.trim());
     if (!emailResult.success) {
       setErrors((prev) => ({ ...prev, email: "Enter a valid email address first" }));
-      return;
-    }
-    if (emailTaken) {
-      setErrors((prev) => ({
-        ...prev,
-        email: "This email has already been used before. Please sign in or use a different email.",
-      }));
       return;
     }
     setErrors((prev) => {
@@ -316,13 +251,6 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
 
     if (values.password !== values.confirmPassword) {
       return setErrors((prev) => keep(prev, { confirmPassword: "Passwords do not match" }));
-    }
-
-    if (emailTaken || errors.email?.includes("used before")) {
-      return setErrors((prev) => ({
-        ...prev,
-        email: "This email has already been used before. Please sign in or use a different email.",
-      }));
     }
 
     // If code has not been sent yet and no code was entered, trigger code sending first
@@ -404,13 +332,9 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
                 type="email"
                 autoComplete="email"
                 value={values.email}
-                onBlur={() => checkEmail(values.email)}
                 onChange={(e) => {
                   const nextEmail = e.target.value;
                   setValues((v) => ({ ...v, email: nextEmail }));
-                  if (emailTaken) {
-                    setEmailTaken(false);
-                  }
                   if (codeSent) {
                     setCodeSent(false);
                     setInfoMessage(undefined);
@@ -428,21 +352,19 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
                 type="button"
                 variant="outline"
                 className="shrink-0 text-xs font-semibold px-3"
-                disabled={isSendingCode || emailChecking || cooldown > 0 || !values.email || emailTaken}
+                disabled={isSendingCode || cooldown > 0 || !values.email}
                 onClick={triggerSendCode}
               >
                 {isSendingCode
                   ? "Sending…"
-                  : emailChecking
-                    ? "Checking…"
-                    : cooldown > 0
-                      ? `Resend (${cooldown}s)`
-                      : codeSent
-                        ? "Resend code"
-                        : "Send code"}
+                  : cooldown > 0
+                    ? `Resend (${cooldown}s)`
+                    : codeSent
+                      ? "Resend code"
+                      : "Send code"}
               </Button>
             </div>
-            {errors.email?.includes("used before") || errors.email?.includes("already") ? (
+            {errors.email?.includes("already has an account") ? (
               <p className="text-xs text-muted-foreground">
                 Already registered with this email?{" "}
                 <Link
@@ -455,8 +377,8 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
             ) : null}
             {codeSent && !errors.email ? (
               <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                <Check className="h-3.5 w-3.5" />
-                Confirmation code sent to {values.email}
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                Check {values.email} for your code
               </p>
             ) : null}
           </div>

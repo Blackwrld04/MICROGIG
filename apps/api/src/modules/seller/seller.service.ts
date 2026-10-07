@@ -10,6 +10,8 @@ import {
 } from "../../db/schema/index.js";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { notFound } from "../../errors.js";
+import { getSellerMetrics } from "./seller-metrics.js";
+import type { AuthUser } from "../../types/auth.js";
 
 export async function getSellerProfile(userId: string) {
   const [profile] = await db
@@ -137,6 +139,7 @@ export async function getSellerDashboardData(userId: string) {
 
   const activeOrders    = sellerOrders.filter((o) => ["IN_PROGRESS", "IN_REVISION", "DELIVERED"].includes(o.status)).length;
   const completedOrders = sellerOrders.filter((o) => o.status === "COMPLETED").length;
+  const metrics         = await getSellerMetrics(userId);
 
   return {
     checklist: {
@@ -146,10 +149,10 @@ export async function getSellerDashboardData(userId: string) {
       hasPublishedGig:    sellerGigs.some((g) => g.status === "PUBLISHED"),
     },
     stats: {
-      netEarningsCents:         completedOrders * 2000,
-      avgSellingPriceCents:     sellerGigs.length > 0 ? Math.round(sellerGigs.reduce((a, b) => a + b.priceCents, 0) / sellerGigs.length) : 2500,
-      onTimeDeliveryRate:       100,
-      completionRate:           sellerOrders.length > 0 ? Math.round((completedOrders / sellerOrders.length) * 100) : 100,
+      netEarningsCents:     metrics.netEarningsCents,
+      avgSellingPriceCents: metrics.avgSellingPriceCents,
+      onTimeDeliveryRate:   metrics.onTimeDeliveryRate,
+      completionRate:       metrics.completionRate,
     },
     activeOrders,
     completedOrders,
@@ -157,7 +160,8 @@ export async function getSellerDashboardData(userId: string) {
   };
 }
 
-export async function getPublicSellerCard(sellerIdOrUserId: string) {
+/** Public seller page. Unverified sellers are hidden (SEL-02) except from themselves and admins. */
+export async function getPublicSellerCard(sellerIdOrUserId: string, viewer?: AuthUser | null) {
   let [profile] = await db
     .select({ id: sellerProfiles.id, userId: sellerProfiles.userId, displayName: sellerProfiles.displayName, headline: sellerProfiles.headline, about: sellerProfiles.about, country: sellerProfiles.country, idVerified: sellerProfiles.idVerified, createdAt: sellerProfiles.createdAt })
     .from(sellerProfiles)
@@ -174,6 +178,8 @@ export async function getPublicSellerCard(sellerIdOrUserId: string) {
   }
 
   if (!profile) return null;
+  if (!profile.idVerified && !(viewer && (viewer.isAdmin || viewer.id === profile.userId))) return null;
+  const metrics = await getSellerMetrics(profile.userId);
 
   const languages = await db
     .select({ language: sellerLanguages.language, proficiency: sellerLanguages.proficiency })
@@ -236,9 +242,9 @@ export async function getPublicSellerCard(sellerIdOrUserId: string) {
       country:          profile.country,
       about:            profile.about,
       memberSince:      profile.createdAt.toISOString(),
-      avgResponseHours: 1,
-      lastDeliveryAt:   null,
-      completionRate:   100,
+      avgResponseHours: metrics.avgResponseHours,
+      lastDeliveryAt:   metrics.lastDeliveryAt,
+      completionRate:   metrics.completionRate,
       languages,
       skills,
     },

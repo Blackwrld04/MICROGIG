@@ -1,10 +1,10 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   registerUser,
   sendVerificationCode,
-  checkEmailAvailability,
   loginUser,
+  normalizeEmail,
   revokeSession,
   revokeAllSessions,
   listUserSessions,
@@ -17,6 +17,12 @@ import {
 } from "../../plugins/authenticate.js";
 import { env } from "../../env.js";
 import { ApiError, notFound } from "../../errors.js";
+
+// PRD 13.2 rate limits. Login is keyed on ip + email, so it runs after the body is parsed.
+const loginKey = (req: FastifyRequest) => {
+  const email = (req.body as { email?: unknown } | undefined)?.email;
+  return `${req.ip}:${typeof email === "string" ? normalizeEmail(email) : ""}`;
+};
 
 const passwordSchema = z
   .string()
@@ -46,25 +52,6 @@ const loginBody = z.object({
 export async function authRoutes(fastify: FastifyInstance) {
   const isProd = env.NODE_ENV === "production";
 
-  fastify.all("/check-email", {
-    config: {
-      rateLimit: {
-        max: 30,
-        timeWindow: "1 minute",
-      },
-    },
-  }, async (req, reply) => {
-    const queryEmail = (req.query as Record<string, string>)?.email;
-    const bodyEmail = (req.body as Record<string, string>)?.email;
-    const rawEmail = (queryEmail || bodyEmail || "").trim();
-    const parsed = z.string().email().safeParse(rawEmail);
-    if (!parsed.success) {
-      return reply.send({ exists: false, message: "Invalid email" });
-    }
-    const result = await checkEmailAvailability(parsed.data);
-    return reply.send(result);
-  });
-
   fastify.post("/send-code", {
     config: {
       rateLimit: {
@@ -87,8 +74,8 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post("/register", {
     config: {
       rateLimit: {
-        max: 15,
-        timeWindow: "1 minute",
+        max: 5,
+        timeWindow: "1 hour",
       },
     },
   }, async (req, reply) => {
@@ -125,8 +112,10 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post("/login", {
     config: {
       rateLimit: {
-        max: 15,
+        max: 10,
         timeWindow: "1 minute",
+        hook: "preHandler",
+        keyGenerator: loginKey,
       },
     },
   }, async (req, reply) => {
@@ -160,6 +149,13 @@ export async function authRoutes(fastify: FastifyInstance) {
     const user = requireAuth(req);
     await revokeSession(user.sessionId, user.id);
     clearSessionCookie(reply);
+    return reply.status(204).send();
+  });
+
+  // Sign out every other device, keeping this session.
+  fastify.post("/logout-all", async (req, reply) => {
+    const user = requireAuth(req);
+    await revokeAllSessions(user.id, user.sessionId);
     return reply.status(204).send();
   });
 

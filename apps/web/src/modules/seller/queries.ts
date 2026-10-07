@@ -4,6 +4,14 @@ import { buildMockOrders } from "@/mocks/orders";
 import { getSellerGigs } from "@/modules/catalog/queries";
 import type { SellerProfileInput, VerificationStatus } from "./contracts";
 
+/** Seller analytics headline stats. Rates and averages are null until there is data to compute them from. */
+export interface SellerStats {
+  netEarningsCents: number;
+  avgSellingPriceCents: number | null;
+  onTimeDeliveryRate: number | null;
+  completionRate: number | null;
+}
+
 /*
  * Seller profile & onboarding reads — SEL-01/02/03.
  * DEMO FIXTURES ONLY: these power demo mode (and its /api/v1 demo handlers). Real mode reads
@@ -47,7 +55,7 @@ export async function getSellerDashboard(nowMs: number) {
       hasPublishedGig: gigs.some((g) => g.status === "PUBLISHED"),
     },
     // SEL headline stats (§16.6). Values from the wireframe until analytics exist.
-    stats: { netEarningsCents: 64000, avgSellingPriceCents: 3250, onTimeDeliveryRate: 98.2, completionRate: 100 },
+    stats: { netEarningsCents: 64000, avgSellingPriceCents: 3250, onTimeDeliveryRate: 98.2, completionRate: 100 } as SellerStats,
     activeOrders: sellerOrders.filter((o) => ["IN_PROGRESS", "IN_REVISION", "DELIVERED"].includes(o.status)).length,
     completedOrders: completed.length,
     gigs,

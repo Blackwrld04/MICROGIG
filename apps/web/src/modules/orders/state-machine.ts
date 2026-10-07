@@ -46,7 +46,8 @@ export function availableActions(order: OrderDetail, role: ViewerRole, nowMs: nu
     case "IN_PROGRESS":
       if (role === "seller") actions.push("DELIVER");
       if (role === "buyer" && isLateRemedyAvailable(order, nowMs)) actions.push("LATE_CANCEL");
-      actions.push(otherPartyAsked ? "ACCEPT_MUTUAL_CANCEL" : "REQUEST_MUTUAL_CANCEL");
+      if (otherPartyAsked) actions.push("ACCEPT_MUTUAL_CANCEL");
+      else if (order.mutualCancelRequestedBy !== role) actions.push("REQUEST_MUTUAL_CANCEL"); // not twice
       actions.push("OPEN_DISPUTE");
       break;
     case "IN_REVISION":

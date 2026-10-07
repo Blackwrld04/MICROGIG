@@ -1,5 +1,6 @@
 import {
   pgTable,
+  jsonb,
   pgEnum,
   text,
   varchar,
@@ -117,6 +118,8 @@ export const deliveries = pgTable(
     storageKey: text("storage_key").notNull(),
     kind:       deliveryKindEnum("kind").notNull(),
     fileTree:   text("file_tree").array(),
+    // Watermarked WEBP preview for image deliveries (DEL-06), stored in the private bucket.
+    previewKey: text("preview_key"),
     notes:      text("notes").notNull().default(""),
     createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -212,3 +215,23 @@ export const reviewsRelations = relations(reviews, ({ one }) => ({
 export const disputesRelations = relations(disputes, ({ one }) => ({
   order: one(orders, { fields: [disputes.orderId], references: [orders.id] }),
 }));
+
+// ── Idempotency Keys (PRD §12.4) ─────────────────────────────────────────────
+// A retried POST with the same Idempotency-Key replays the stored response instead of
+// running twice. `statusCode` is null while the first request is still running.
+
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
+  {
+    userId:      text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    key:         varchar("key", { length: 255 }).notNull(),
+    route:       text("route").notNull(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    statusCode:  integer("status_code"),
+    response:    jsonb("response"),
+    createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.key] }),
+  }),
+);

@@ -1,63 +1,48 @@
 import bcrypt from "bcryptjs";
+import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { db } from "../../db/connection.js";
 import { users, sessions, ledgerAccounts, sellerProfiles, emailVerifications } from "../../db/schema/index.js";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, ne, sql } from "drizzle-orm";
 import { ApiError } from "../../errors.js";
+import { env } from "../../env.js";
 import { sendTransactionalEmail } from "../../lib/email.js";
 import type { AuthUser } from "../../types/auth.js";
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-export async function checkEmailAvailability(email: string) {
-  const normalizedEmail = email.toLowerCase().trim();
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, normalizedEmail))
-    .limit(1);
+const CODE_TTL_MS             = 15 * 60 * 1000; // a code is valid for 15 minutes
+const CODE_MAX_ATTEMPTS       = 5;              // wrong guesses before the code is burned
+const CODE_RESEND_COOLDOWN_MS = 60 * 1000;      // one email per address per minute
+const CODE_MAX_SENDS_PER_HOUR = 5;
+const HOUR_MS                 = 60 * 60 * 1000;
 
-  return {
-    exists: Boolean(existing),
-    message: existing
-      ? "This email has already been used before. Please sign in or use a different email."
-      : "Email is available",
-  };
+const LOGIN_MAX_FAILURES = 5;                   // PRD 13.2: 5 failures lock the account
+const LOGIN_LOCK_SECONDS = 15 * 60;             // for 15 minutes
+
+// Compared against when the email is unknown, so a login takes the same time either way.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("microgig-timing-equaliser", BCRYPT_ROUNDS);
+
+const GENERIC_SEND_MESSAGE = "If this email can be used, we've sent a 6-digit confirmation code to it.";
+const INVALID_CODE_MESSAGE = "Invalid or expired confirmation code. Please check your email or request a new code.";
+
+export function normalizeEmail(email: string) {
+  return email.toLowerCase().trim();
 }
 
-export async function sendVerificationCode(email: string) {
-  const normalizedEmail = email.toLowerCase().trim();
+/** Keyed on the email and COOKIE_SECRET so a leaked table can't be brute-forced offline. */
+export function hashVerificationCode(email: string, code: string) {
+  return createHash("sha256").update(`${env.COOKIE_SECRET}:${email}:${code}`).digest("hex");
+}
 
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, normalizedEmail))
-    .limit(1);
+function sameHash(a: string, b: string) {
+  const ab = Buffer.from(a, "hex");
+  const bb = Buffer.from(b, "hex");
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
 
-  if (existing) {
-    throw new ApiError(
-      "This email has already been used before. Please sign in or use a different email.",
-      409,
-      {
-        email: "This email has already been used before. Please sign in or use a different email.",
-      },
-    );
-  }
-
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-  await db.transaction(async (tx) => {
-    await tx.delete(emailVerifications).where(eq(emailVerifications.email, normalizedEmail));
-    await tx.insert(emailVerifications).values({
-      email: normalizedEmail,
-      code,
-      expiresAt,
-    });
-  });
-
-  const subject = `Your MicroGig Confirmation Code: ${code}`;
-  const html = `
+function codeEmailHtml(code: string) {
+  return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 30px;">
       <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e4e5e7; padding: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -107,16 +92,125 @@ export async function sendVerificationCode(email: string) {
       </div>
     </div>
   `;
-  const text = `Your MicroGig Confirmation Code is: ${code}\nThis code will expire in 15 minutes.`;
+}
 
-  await sendTransactionalEmail({
-    to: normalizedEmail,
-    subject,
-    html,
-    text,
-  });
+function existingAccountEmail() {
+  const signIn = `${env.WEB_ORIGIN}/login`;
+  return {
+    subject: "You already have a microgig account",
+    text: `Someone (hopefully you) tried to sign up to microgig with this email, but it already has an account.\nSign in instead: ${signIn}\nIf this wasn't you, you can ignore this email.`,
+    html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; color: #222325;">
+  <h2 style="font-size: 20px;">You already have an account</h2>
+  <p style="font-size: 14px; color: #62646a; line-height: 1.5;">Someone (hopefully you) tried to sign up to microgig with this email, but it already has an account.</p>
+  <p><a href="${signIn}" style="color: #0E7A55; font-weight: 700;">Sign in instead</a></p>
+  <p style="font-size: 12px; color: #62646a;">If this wasn't you, you can ignore this email.</p>
+</div>`,
+  };
+}
 
-  return { ok: true, message: "Confirmation code sent to your email" };
+/**
+ * Emails a 6-digit confirmation code (AUTH-01). The response is the same whether or not the
+ * email already has an account, so this can't be used to find out who is registered: an
+ * existing account gets a "you already have an account" email instead of a code.
+ */
+export async function sendVerificationCode(rawEmail: string) {
+  const email = normalizeEmail(rawEmail);
+  const now = new Date();
+
+  const [existingUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+  const [record] = await db.select().from(emailVerifications).where(eq(emailVerifications.email, email)).limit(1);
+
+  const windowOpen = !!record && now.getTime() - record.windowStartedAt.getTime() < HOUR_MS;
+  if (record) {
+    const sinceLast = now.getTime() - record.lastSentAt.getTime();
+    if (sinceLast < CODE_RESEND_COOLDOWN_MS) {
+      const wait = Math.ceil((CODE_RESEND_COOLDOWN_MS - sinceLast) / 1000);
+      throw new ApiError(`Please wait ${wait} seconds before requesting another code.`, 429);
+    }
+    if (windowOpen && record.sendCount >= CODE_MAX_SENDS_PER_HOUR) {
+      throw new ApiError("Too many codes requested for this email. Try again in an hour.", 429);
+    }
+  }
+
+  // Existing accounts still get a row (with a code nobody receives) so the throttle applies.
+  const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+  const codeHash = hashVerificationCode(email, code);
+  const expiresAt = new Date(now.getTime() + CODE_TTL_MS);
+
+  await db
+    .insert(emailVerifications)
+    .values({ email, codeHash, attempts: 0, sendCount: 1, windowStartedAt: now, lastSentAt: now, expiresAt })
+    .onConflictDoUpdate({
+      target: emailVerifications.email,
+      set: {
+        codeHash,
+        attempts: 0,
+        expiresAt,
+        lastSentAt: now,
+        sendCount: windowOpen ? sql`${emailVerifications.sendCount} + 1` : 1,
+        windowStartedAt: windowOpen ? record!.windowStartedAt : now,
+      },
+    });
+
+  const message = existingUser
+    ? existingAccountEmail()
+    : {
+        subject: `Your microgig confirmation code: ${code}`,
+        html: codeEmailHtml(code),
+        text: `Your microgig confirmation code is: ${code}\nThis code will expire in 15 minutes.`,
+      };
+
+  const result = await sendTransactionalEmail({ to: email, ...message });
+  if (result.status === "sent") return { ok: true, message: GENERIC_SEND_MESSAGE };
+
+  // Development without a provider: the email (code included) was printed to the API log.
+  if (result.status === "not_configured" && env.NODE_ENV !== "production") {
+    return { ok: true, message: GENERIC_SEND_MESSAGE };
+  }
+
+  // The code never reached the user: burn it so it can't be guessed.
+  await db.update(emailVerifications).set({ expiresAt: now }).where(eq(emailVerifications.email, email));
+  if (result.status === "not_configured") {
+    throw new ApiError("Email delivery isn't set up yet, so we can't send confirmation codes right now.", 503);
+  }
+  console.error("[send-code] email delivery failed:", result.error);
+  throw new ApiError("We couldn't send the confirmation email. Please try again in a moment.", 502);
+}
+
+/**
+ * Checks a confirmation code and consumes it on success. Each guess counts toward
+ * CODE_MAX_ATTEMPTS; after that the code is dead and a new one must be requested.
+ */
+export async function consumeVerificationCode(email: string, code: string | undefined) {
+  if (!code?.trim()) {
+    throw new ApiError("Please enter the confirmation code sent to your email.", 422, {
+      code: "Please enter the confirmation code",
+    });
+  }
+
+  // Count the attempt atomically before comparing, so parallel guesses can't exceed the cap.
+  const [record] = await db
+    .update(emailVerifications)
+    .set({ attempts: sql`${emailVerifications.attempts} + 1` })
+    .where(
+      and(
+        eq(emailVerifications.email, email),
+        sql`${emailVerifications.attempts} < ${CODE_MAX_ATTEMPTS}`,
+        sql`${emailVerifications.expiresAt} > now()`,
+      ),
+    )
+    .returning();
+
+  if (!record || !sameHash(record.codeHash, hashVerificationCode(email, code.trim()))) {
+    const exhausted = !record || record.attempts >= CODE_MAX_ATTEMPTS;
+    throw new ApiError(
+      exhausted ? "This code has expired or had too many wrong attempts. Request a new code." : INVALID_CODE_MESSAGE,
+      422,
+      { code: "Invalid or expired confirmation code" },
+    );
+  }
+
+  await db.delete(emailVerifications).where(eq(emailVerifications.email, email));
 }
 
 export async function registerUser(input: {
@@ -128,46 +222,17 @@ export async function registerUser(input: {
   userAgent?: string;
   ipAddress?: string;
 }) {
-  const normalizedEmail = input.email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(input.email);
 
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, normalizedEmail))
-    .limit(1);
+  // The code proves the person owns the inbox. Existing accounts never receive a code,
+  // so signing up over one fails here with the same error as a wrong code.
+  await consumeVerificationCode(normalizedEmail, input.code);
 
-  if (existing.length > 0) {
-    throw new ApiError(
-      "This email has already been used before. Please sign in or use a different email.",
-      409,
-      {
-        email: "This email has already been used before. Please sign in or use a different email.",
-      },
-    );
-  }
-
-  // If a code was sent or code is provided, verify it (demo fallback: 123456)
-  const [verificationRecord] = await db
-    .select()
-    .from(emailVerifications)
-    .where(eq(emailVerifications.email, normalizedEmail))
-    .limit(1);
-
-  if (verificationRecord || input.code) {
-    const isMasterCode = input.code === "123456";
-    const matches = verificationRecord && verificationRecord.code === input.code?.trim() && verificationRecord.expiresAt >= new Date();
-
-    if (!matches && !isMasterCode) {
-      throw new ApiError(
-        input.code ? "Invalid or expired confirmation code. Please check your email or request a new code." : "Please enter the confirmation code sent to your email.",
-        422,
-        { code: input.code ? "Invalid or expired confirmation code" : "Please enter the confirmation code" }
-      );
-    }
-
-    if (verificationRecord) {
-      await db.delete(emailVerifications).where(eq(emailVerifications.email, normalizedEmail));
-    }
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  if (existing) {
+    throw new ApiError("This email already has an account. Please sign in instead.", 409, {
+      email: "This email already has an account",
+    });
   }
 
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
@@ -181,7 +246,7 @@ export async function registerUser(input: {
       fullName:     input.fullName,
       accountType:  input.accountType,
       isAdmin:      false,
-      emailVerified: true,
+      emailVerified: true, // only reached after a matching code
     });
 
     // Provision accounts based on role
@@ -221,16 +286,35 @@ export async function loginUser(
   const [user] = await db
     .select()
     .from(users)
-    .where(eq(users.email, email.toLowerCase()))
+    .where(eq(users.email, normalizeEmail(email)))
     .limit(1);
 
   if (!user) {
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     throw new ApiError("Invalid email or password.", 401);
+  }
+
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+    throw new ApiError(`Too many failed sign-in attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`, 429);
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
+    // The 5th failure in a row locks the account for 15 minutes and resets the counter.
+    const reachesLimit = sql`${users.failedLoginCount} + 1 >= ${LOGIN_MAX_FAILURES}`;
+    await db
+      .update(users)
+      .set({
+        failedLoginCount: sql`CASE WHEN ${reachesLimit} THEN 0 ELSE ${users.failedLoginCount} + 1 END`,
+        lockedUntil: sql`CASE WHEN ${reachesLimit} THEN now() + make_interval(secs => ${LOGIN_LOCK_SECONDS}) ELSE ${users.lockedUntil} END`,
+      })
+      .where(eq(users.id, user.id));
     throw new ApiError("Invalid email or password.", 401);
+  }
+
+  if (user.failedLoginCount > 0 || user.lockedUntil) {
+    await db.update(users).set({ failedLoginCount: 0, lockedUntil: null }).where(eq(users.id, user.id));
   }
 
   return createSession(user.id, meta);
@@ -259,25 +343,24 @@ export async function revokeSession(sessionId: string, userId: string): Promise<
   const updated = await db
     .update(sessions)
     .set({ revokedAt: new Date() })
-    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+    .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.revokedAt)))
     .returning({ id: sessions.id });
 
   return updated.length > 0;
 }
 
+/** Revokes every live session of the user, optionally keeping the one making the request. */
 export async function revokeAllSessions(userId: string, exceptSessionId?: string) {
-  const rows = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(eq(sessions.userId, userId));
-
-  for (const row of rows) {
-    if (exceptSessionId && row.id === exceptSessionId) continue;
-    await db
-      .update(sessions)
-      .set({ revokedAt: new Date() })
-      .where(eq(sessions.id, row.id));
-  }
+  await db
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(sessions.userId, userId),
+        isNull(sessions.revokedAt),
+        exceptSessionId ? ne(sessions.id, exceptSessionId) : undefined,
+      ),
+    );
 }
 
 export async function getUserById(id: string): Promise<AuthUser> {

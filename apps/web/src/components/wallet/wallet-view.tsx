@@ -66,7 +66,8 @@ function cardsFor(wallet: WalletResponse) {
  * Wallet & earnings — PRD §11.6 / §16.7. Server state via TanStack Query; top-up and withdraw
  * are mutations (demo: applied to the cache; real: POST, then refetch).
  * Real mode: POST /api/v1/wallet/topup (clients) and /wallet/withdraw (freelancers). The CSV is built
- * from the loaded activity (the backend has no /wallet/activity?format=csv yet).
+ * from the loaded activity so it also works in demo mode; the API offers the same export at
+ * GET /api/v1/wallet/activity?format=csv.
  */
 export function WalletView() {
   const queryClient = useQueryClient();

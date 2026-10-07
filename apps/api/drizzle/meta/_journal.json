@@ -29,6 +29,20 @@
       "when": 1791207397079,
       "tag": "0003_fine_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791329821947,
+      "tag": "0004_backend_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791329862761,
+      "tag": "0005_drop_plaintext_codes",
+      "breakpoints": true
     }
   ]
 }

@@ -3,8 +3,10 @@ import {
   pgEnum,
   text,
   boolean,
+  integer,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { users } from "./auth.js";
@@ -21,7 +23,13 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "LATE_WARNING",
   "DISPUTE_OPENED",
   "NEW_MESSAGE",
+  "REVIEW_REMINDER",
+  "DISPUTE_RESOLVED",
+  "ORDER_CANCELLED",
 ]);
+
+/** Email outbox state: rows are emailed by the dispatcher cron only after their transaction commits. */
+export const emailStatusEnum = pgEnum("email_status", ["PENDING", "SENDING", "SENT", "SKIPPED", "FAILED"]);
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
@@ -36,10 +44,18 @@ export const notifications = pgTable(
     orderId:   text("order_id"),
     message:   text("message").notNull(),
     read:      boolean("read").notNull().default(false),
+    // Set by scheduled warnings so a job that runs twice can't notify twice.
+    dedupeKey: text("dedupe_key"),
+    emailStatus:        emailStatusEnum("email_status").notNull().default("PENDING"),
+    emailAttempts:      integer("email_attempts").notNull().default(0),
+    emailNextAttemptAt: timestamp("email_next_attempt_at", { withTimezone: true }),
+    emailLastError:     text("email_last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     userReadIdx: index("notifications_user_read_idx").on(t.userId, t.read),
+    dedupeUnique: uniqueIndex("notifications_user_dedupe_unique").on(t.userId, t.dedupeKey),
+    emailQueueIdx: index("notifications_email_queue_idx").on(t.emailStatus, t.emailNextAttemptAt),
   }),
 );
 

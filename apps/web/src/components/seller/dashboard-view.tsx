@@ -44,9 +44,9 @@ export function DashboardView() {
 
   const statCards = [
     { label: "Net earnings", value: formatCents(stats.netEarningsCents) },
-    { label: "Avg selling price", value: formatCents(stats.avgSellingPriceCents) },
-    { label: "On-time delivery", value: `${stats.onTimeDeliveryRate}%` },
-    { label: "Completion rate", value: `${stats.completionRate}%` },
+    { label: "Avg selling price", value: stats.avgSellingPriceCents === null ? "No sales yet" : formatCents(stats.avgSellingPriceCents) },
+    { label: "On-time delivery", value: stats.onTimeDeliveryRate === null ? "No deliveries yet" : `${stats.onTimeDeliveryRate}%` },
+    { label: "Completion rate", value: stats.completionRate === null ? "No orders yet" : `${stats.completionRate}%` },
   ];
 
   return (

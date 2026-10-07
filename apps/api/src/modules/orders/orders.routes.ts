@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   placeOrder,
@@ -17,6 +17,7 @@ import {
 } from "./orders.service.js";
 import { requireAuth, requireRole } from "../../plugins/authenticate.js";
 import { unprocessable } from "../../errors.js";
+import { withIdempotency } from "../../lib/idempotency.js";
 
 const placeOrderBody = z.object({
   gigId: z.string().min(1),
@@ -29,11 +30,11 @@ const requirementsBody = z.object({
 const deliveryBody = z.object({
   fileName:   z.string().min(1, "File name is required"),
   fileSize:   z.number().int().min(1, "File size must be greater than 0"),
-  sha256:     z.string().min(1, "sha256 hash is required"),
+  sha256:     z.string().regex(/^[a-fA-F0-9]{64}$/, "sha256 must be a 64-character hex digest"),
   storageKey: z.string().min(1).optional(),
   fileKey:    z.string().min(1).optional(),
   kind:       z.enum(["image", "archive", "document"]).optional(),
-  fileTree:   z.array(z.string()).optional(),
+  fileTree:   z.array(z.string()).nullish(), // ignored: the server reads the ZIP itself
   notes:      z.string().default(""),
 });
 
@@ -51,20 +52,29 @@ const reviewBody = z.object({
 });
 
 const messageBody = z.object({
-  body:           z.string().trim().min(1),
-  attachmentName: z.string().optional(),
+  body:           z.string().trim().min(1).max(5000),
+  attachmentName: z.string().max(255).optional(),
 });
+
+// PRD 13.2: 30 messages per user per minute.
+const messageRateLimit = {
+  rateLimit: {
+    max: 30,
+    timeWindow: "1 minute",
+    hook: "preHandler" as const,
+    keyGenerator: (req: FastifyRequest) => `messages:${req.user?.id ?? req.ip}`,
+  },
+};
 
 export async function ordersRoutes(fastify: FastifyInstance) {
   fastify.post("/orders", async (req, reply) => {
     const user = requireRole(req, "CLIENT");
     const parsed = placeOrderBody.safeParse(req.body);
     if (!parsed.success) throw unprocessable("Gig ID is required");
-    const result = await placeOrder(user.id, parsed.data.gigId);
-    return reply.status(201).send({
-      ...result,
-      orderId: result.order.id,
-      id: result.order.id,
+    // A retried checkout with the same Idempotency-Key returns the first order, never a second one.
+    return withIdempotency(req, reply, user.id, 201, async () => {
+      const result = await placeOrder(user.id, parsed.data.gigId);
+      return { ...result, orderId: result.order.id, id: result.order.id };
     });
   });
 
@@ -95,7 +105,12 @@ export async function ordersRoutes(fastify: FastifyInstance) {
     const user = requireRole(req, "FREELANCER");
     const { id } = req.params as { id: string };
     const parsed = deliveryBody.safeParse(req.body);
-    if (!parsed.success) throw unprocessable("Invalid delivery payload");
+    if (!parsed.success) {
+      const fieldErrors = Object.fromEntries(
+        Object.entries(parsed.error.flatten().fieldErrors).map(([k, v]) => [k, v?.[0] ?? "Invalid"]),
+      );
+      throw unprocessable("Invalid delivery payload", fieldErrors);
+    }
     const result = await submitDelivery(user, id, parsed.data);
     return reply.status(201).send(result);
   });
@@ -103,8 +118,7 @@ export async function ordersRoutes(fastify: FastifyInstance) {
   fastify.post("/orders/:id/complete", async (req, reply) => {
     const user = requireRole(req, "CLIENT");
     const { id } = req.params as { id: string };
-    const result = await acceptDelivery(user, id);
-    return reply.send(result);
+    return withIdempotency(req, reply, user.id, 200, () => acceptDelivery(user, id));
   });
 
   fastify.post("/orders/:id/revision", async (req, reply) => {
@@ -128,8 +142,7 @@ export async function ordersRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = disputeBody.safeParse(req.body);
     if (!parsed.success) throw unprocessable(parsed.error.errors[0]?.message ?? "Invalid dispute reason");
-    const result = await openDispute(user, id, parsed.data.reason);
-    return reply.send(result);
+    return withIdempotency(req, reply, user.id, 200, () => openDispute(user, id, parsed.data.reason));
   });
 
   fastify.post("/orders/:id/review", async (req, reply) => {
@@ -155,7 +168,7 @@ export async function ordersRoutes(fastify: FastifyInstance) {
     return reply.send(msgs);
   });
 
-  fastify.post("/orders/:id/messages", async (req, reply) => {
+  fastify.post("/orders/:id/messages", { config: messageRateLimit }, async (req, reply) => {
     const user = requireAuth(req);
     const { id } = req.params as { id: string };
     const parsed = messageBody.safeParse(req.body);

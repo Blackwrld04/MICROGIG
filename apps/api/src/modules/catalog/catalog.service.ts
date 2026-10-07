@@ -12,6 +12,8 @@ import {
 import { eq, and, sql, desc, asc, ilike, count, inArray, or } from "drizzle-orm";
 import { generateGigSlug } from "../../lib/slug.js";
 import { notFound, forbidden } from "../../errors.js";
+import { getSellerMetrics } from "../seller/seller-metrics.js";
+import type { AuthUser } from "../../types/auth.js";
 
 const PAGE_SIZE = 24;
 
@@ -40,7 +42,8 @@ export async function searchGigs(query: {
   const page   = Math.max(1, query.page ?? 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const conditions: ReturnType<typeof eq>[] = [eq(gigs.status, "PUBLISHED")];
+  // SEL-02: only published gigs of ID-verified sellers are listed.
+  const conditions: ReturnType<typeof eq>[] = [eq(gigs.status, "PUBLISHED"), eq(sellerProfiles.idVerified, true)];
   if (query.category) {
     const candidates = CATEGORY_MAP[query.category] ?? [query.category];
     conditions.push(inArray(gigs.category, candidates) as any);
@@ -56,7 +59,11 @@ export async function searchGigs(query: {
   if (query.sort === "rating_desc")        orderBy = desc(gigs.avgRating);
   if (query.sort === "delivery_time_asc")  orderBy = asc(gigs.turnaroundHours);
 
-  const [totalRes] = await db.select({ total: count() }).from(gigs).where(and(...(conditions as any)));
+  const [totalRes] = await db
+    .select({ total: count() })
+    .from(gigs)
+    .innerJoin(sellerProfiles, eq(gigs.sellerId, sellerProfiles.id))
+    .where(and(...(conditions as any)));
 
   const rows = await db
     .select({
@@ -98,9 +105,13 @@ export async function searchGigs(query: {
   };
 }
 
-export async function getGigBySlug(slug: string) {
+/**
+ * Gig detail. Anyone sees a published gig of a verified seller (SEL-02); the seller who owns
+ * it, and admins, also see it while it's a draft, paused, or the seller is unverified.
+ */
+export async function getGigBySlug(slug: string, viewer?: AuthUser | null) {
   const [gig] = await db
-    .select({ id: gigs.id, slug: gigs.slug, sellerId: gigs.sellerId, title: gigs.title, category: gigs.category, subcategory: gigs.subcategory, description: gigs.description, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, revisionsIncluded: gigs.revisionsIncluded, requirementsPrompt: gigs.requirementsPrompt, tags: gigs.tags, thumbnailUrl: gigs.thumbnailUrl, avgRating: gigs.avgRating, reviewCount: gigs.reviewCount, favoriteCount: gigs.favoriteCount, createdAt: gigs.createdAt })
+    .select({ id: gigs.id, slug: gigs.slug, sellerId: gigs.sellerId, status: gigs.status, title: gigs.title, category: gigs.category, subcategory: gigs.subcategory, description: gigs.description, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, revisionsIncluded: gigs.revisionsIncluded, requirementsPrompt: gigs.requirementsPrompt, tags: gigs.tags, thumbnailUrl: gigs.thumbnailUrl, avgRating: gigs.avgRating, reviewCount: gigs.reviewCount, favoriteCount: gigs.favoriteCount, createdAt: gigs.createdAt })
     .from(gigs)
     .where(eq(gigs.slug, slug))
     .limit(1);
@@ -108,10 +119,15 @@ export async function getGigBySlug(slug: string) {
   if (!gig) return null;
 
   const [profile] = await db
-    .select({ id: sellerProfiles.id, displayName: sellerProfiles.displayName, headline: sellerProfiles.headline, country: sellerProfiles.country, idVerified: sellerProfiles.idVerified, createdAt: sellerProfiles.createdAt })
+    .select({ id: sellerProfiles.id, userId: sellerProfiles.userId, displayName: sellerProfiles.displayName, headline: sellerProfiles.headline, country: sellerProfiles.country, idVerified: sellerProfiles.idVerified, createdAt: sellerProfiles.createdAt })
     .from(sellerProfiles)
     .where(eq(sellerProfiles.id, gig.sellerId))
     .limit(1);
+
+  const privileged = !!viewer && (viewer.isAdmin || viewer.id === profile?.userId);
+  if (gig.status === "DELETED") return null;
+  if (!privileged && (gig.status !== "PUBLISHED" || !profile?.idVerified)) return null;
+  const metrics = profile ? await getSellerMetrics(profile.userId) : null;
 
   const languages = await db
     .select({ language: sellerLanguages.language, proficiency: sellerLanguages.proficiency })
@@ -136,6 +152,7 @@ export async function getGigBySlug(slug: string) {
     id:                 gig.id,
     slug:               gig.slug,
     title:              gig.title,
+    status:             gig.status,
     thumbnailUrl:       gig.thumbnailUrl,
     priceCents:         gig.priceCents,
     turnaroundHours:    gig.turnaroundHours as 24 | 48,
@@ -164,9 +181,9 @@ export async function getGigBySlug(slug: string) {
       headline:         profile?.headline ?? "",
       country:          profile?.country ?? "",
       memberSince:      profile?.createdAt?.toISOString() ?? gig.createdAt.toISOString(),
-      avgResponseHours: 1,
-      lastDeliveryAt:   null,
-      completionRate:   100,
+      avgResponseHours: metrics?.avgResponseHours ?? null,
+      lastDeliveryAt:   metrics?.lastDeliveryAt ?? null,
+      completionRate:   metrics?.completionRate ?? null,
       languages,
     },
     reviews: gigReviews.map((r) => ({ id: r.id, buyerName: r.buyerName, rating: r.rating, body: r.body, createdAt: r.createdAt.toISOString() })),
@@ -223,7 +240,7 @@ export async function getMoreFromSeller(gigId: string) {
     .select({ id: gigs.id, slug: gigs.slug, title: gigs.title, thumbnailUrl: gigs.thumbnailUrl, priceCents: gigs.priceCents, turnaroundHours: gigs.turnaroundHours, rating: gigs.avgRating, reviewCount: gigs.reviewCount, favoriteCount: gigs.favoriteCount, sellerId: sellerProfiles.id, sellerName: sellerProfiles.displayName, sellerVerified: sellerProfiles.idVerified })
     .from(gigs)
     .innerJoin(sellerProfiles, eq(gigs.sellerId, sellerProfiles.id))
-    .where(and(eq(gigs.sellerId, current.sellerId), eq(gigs.status, "PUBLISHED"), sql`${gigs.id} <> ${gigId}`))
+    .where(and(eq(gigs.sellerId, current.sellerId), eq(gigs.status, "PUBLISHED"), eq(sellerProfiles.idVerified, true), sql`${gigs.id} <> ${gigId}`))
     .limit(5);
 
   return otherGigs.map((r) => ({
@@ -234,6 +251,8 @@ export async function getMoreFromSeller(gigId: string) {
 }
 
 export async function toggleGigFavorite(userId: string, gigId: string) {
+  const [target] = await db.select({ id: gigs.id }).from(gigs).where(and(eq(gigs.id, gigId), eq(gigs.status, "PUBLISHED"))).limit(1);
+  if (!target) throw notFound("Gig not found");
   const [existing] = await db.select().from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.gigId, gigId))).limit(1);
 
   let isFavorited = false;
@@ -254,15 +273,63 @@ export async function toggleGigFavorite(userId: string, gigId: string) {
   return { isFavorited, count: updated?.favoriteCount ?? 0 };
 }
 
-export async function updateGigStatus(userId: string, gigId: string, status: "PUBLISHED" | "PAUSED") {
+async function ownedGig(userId: string, gigId: string) {
   const [profile] = await db.select({ id: sellerProfiles.id }).from(sellerProfiles).where(eq(sellerProfiles.userId, userId)).limit(1);
   if (!profile) throw forbidden("Not authorized");
 
-  const [gig] = await db.select({ id: gigs.id, sellerId: gigs.sellerId }).from(gigs).where(eq(gigs.id, gigId)).limit(1);
-  if (!gig) throw notFound("Gig not found");
+  const [gig] = await db.select({ id: gigs.id, sellerId: gigs.sellerId, status: gigs.status }).from(gigs).where(eq(gigs.id, gigId)).limit(1);
+  if (!gig || gig.status === "DELETED") throw notFound("Gig not found");
   if (gig.sellerId !== profile.id) throw forbidden("You do not own this gig");
+  return gig;
+}
 
+export async function updateGigStatus(userId: string, gigId: string, status: "PUBLISHED" | "PAUSED") {
+  await ownedGig(userId, gigId);
   await db.update(gigs).set({ status, updatedAt: new Date() }).where(eq(gigs.id, gigId));
   return { id: gigId, status };
 }
 
+/**
+ * Edits a gig. Only the fields sent are changed; `faqs` and `images` replace the whole list.
+ * Existing orders keep the price, turnaround and requirements they were placed with.
+ */
+export async function updateGig(
+  userId: string,
+  gigId: string,
+  input: Partial<{
+    title: string;
+    category: string;
+    subcategory: string;
+    description: string;
+    priceCents: number;
+    turnaroundHours: 24 | 48;
+    revisionsIncluded: number;
+    tags: string[];
+    faqs: { question: string; answer: string }[];
+    requirementsPrompt: string[];
+    images: string[];
+    status: "PUBLISHED" | "PAUSED";
+  }>,
+) {
+  await ownedGig(userId, gigId);
+  const { faqs, images, ...fields } = input;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(gigs)
+      .set({ ...fields, ...(images ? { thumbnailUrl: images[0] ?? null } : {}), updatedAt: new Date() })
+      .where(eq(gigs.id, gigId));
+
+    if (faqs) {
+      await tx.delete(gigFaqs).where(eq(gigFaqs.gigId, gigId));
+      if (faqs.length > 0) await tx.insert(gigFaqs).values(faqs.map((faq, i) => ({ gigId, question: faq.question, answer: faq.answer, position: i })));
+    }
+    if (images) {
+      await tx.delete(gigImages).where(eq(gigImages.gigId, gigId));
+      if (images.length > 0) await tx.insert(gigImages).values(images.map((url, i) => ({ gigId, url, isPrimary: i === 0, position: i })));
+    }
+  });
+
+  const [updated] = await db.select({ id: gigs.id, slug: gigs.slug, status: gigs.status }).from(gigs).where(eq(gigs.id, gigId)).limit(1);
+  return updated;
+}
