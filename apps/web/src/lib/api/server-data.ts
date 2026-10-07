@@ -40,14 +40,25 @@ import type {
  * in src/app/api/v1, so the browser and the server always see the same data.
  */
 
-async function backend<T>(path: string): Promise<T> {
-  const res = await fetch(`${apiBaseUrl()}/api/v1${path}`, {
-    headers: { cookie: cookies().toString(), accept: "application/json" },
-    cache: "no-store",
-  });
-  const body: unknown = await res.json().catch(() => null);
-  if (!res.ok) throw errorFromResponse(res.status, body, res.headers.get("Retry-After"));
-  return body as T;
+async function backend<T>(path: string, timeoutMs = 3000): Promise<T> {
+  const base = apiBaseUrl();
+  if (!base) {
+    throw new ApiError("server", 503, "Backend URL not configured");
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${base}/api/v1${path}`, {
+      headers: { cookie: cookies().toString(), accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const body: unknown = await res.json().catch(() => null);
+    if (!res.ok) throw errorFromResponse(res.status, body, res.headers.get("Retry-After"));
+    return body as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** 404 → null, anything else rethrows. */
