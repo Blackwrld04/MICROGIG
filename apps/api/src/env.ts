@@ -58,6 +58,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_SECURE: z.coerce.boolean().default(true),
   ALLOW_SIMULATED_EMAIL: z.coerce.boolean().default(false),
+  INTERNAL_EMAIL_PROXY_URL: z.string().optional(),
+  INTERNAL_EMAIL_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -101,6 +103,8 @@ export const env = parsed.success
       SMTP_PASS: process.env.SMTP_PASS,
       SMTP_SECURE: process.env.SMTP_SECURE !== "false",
       ALLOW_SIMULATED_EMAIL: process.env.ALLOW_SIMULATED_EMAIL === "true",
+      INTERNAL_EMAIL_PROXY_URL: process.env.INTERNAL_EMAIL_PROXY_URL,
+      INTERNAL_EMAIL_SECRET: process.env.INTERNAL_EMAIL_SECRET,
     };
 
 export type Env = typeof env;

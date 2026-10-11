@@ -50,7 +50,14 @@ export type EmailResult =
   | { status: "failed"; error: string };
 
 export function emailConfigured() {
-  return Boolean(resend || smtpTransporter);
+  const relaySecret = env.INTERNAL_EMAIL_SECRET || env.COOKIE_SECRET;
+  const relayUrl =
+    env.INTERNAL_EMAIL_PROXY_URL ||
+    (env.WEB_ORIGIN && !env.WEB_ORIGIN.includes("localhost")
+      ? `${env.WEB_ORIGIN.replace(/\/+$/, "")}/api/internal/send-email`
+      : null);
+
+  return Boolean(resend || (relayUrl && relaySecret) || smtpTransporter);
 }
 
 /** Sends one email and reports what happened, so callers can tell the user or retry. */
@@ -72,7 +79,40 @@ export async function sendTransactionalEmail(options: SendEmailOptions): Promise
     }
   }
 
-  // 2. SMTP (e.g. Gmail App Password, SendGrid SMTP, Mailgun)
+  // 2. HTTPS Relay (for environments like Render Free where outbound ports 465/587 are blocked)
+  const relaySecret = env.INTERNAL_EMAIL_SECRET || env.COOKIE_SECRET;
+  const relayUrl =
+    env.INTERNAL_EMAIL_PROXY_URL ||
+    (env.WEB_ORIGIN && !env.WEB_ORIGIN.includes("localhost")
+      ? `${env.WEB_ORIGIN.replace(/\/+$/, "")}/api/internal/send-email`
+      : null);
+
+  if (relayUrl && relaySecret) {
+    try {
+      const response = await fetch(relayUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": relaySecret,
+        },
+        body: JSON.stringify(options),
+        signal: AbortSignal.timeout(12000),
+      });
+
+      const data = await response.json().catch(() => null) as { ok?: boolean; messageId?: string; error?: string } | null;
+      if (response.ok && data?.ok) {
+        console.log(`[email] Sent via HTTPS relay (${relayUrl}): ${data.messageId}`);
+        return { status: "sent", id: data.messageId };
+      }
+
+      console.warn(`[email] Relay returned ${response.status}:`, data?.error || "Unknown relay error");
+      // If relay returned 401/404/503, try direct SMTP fallback below if configured
+    } catch (relayErr) {
+      console.warn("[email] HTTPS relay network error:", relayErr instanceof Error ? relayErr.message : String(relayErr));
+    }
+  }
+
+  // 3. Direct SMTP (e.g. Local dev, or Render paid plans where ports 465/587 are open)
   if (smtpTransporter) {
     try {
       const info = await smtpTransporter.sendMail({
@@ -88,7 +128,7 @@ export async function sendTransactionalEmail(options: SendEmailOptions): Promise
     }
   }
 
-  // 3. No provider. Development logs the email so flows can be tested locally.
+  // 4. No provider. Development logs the email so flows can be tested locally.
   if (env.NODE_ENV !== "production") {
     console.log(`[Email Simulation] To: ${options.to} | Subject: "${options.subject}"
 ${options.text ?? ""}`);
