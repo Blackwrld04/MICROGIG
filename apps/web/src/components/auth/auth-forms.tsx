@@ -160,7 +160,7 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
 
   const sendCode = useMutation({
     mutationFn: (email: string) =>
-      api<{ ok: boolean; message: string; code?: string }>("/auth/send-code", {
+      api<{ ok: boolean; message: string }>("/auth/send-code", {
         method: "POST",
         body: { email: email.trim() },
       }),
@@ -171,9 +171,6 @@ export function RegisterForm({ initialType, next }: { initialType?: AccountType;
     onSuccess: (data) => {
       setCodeSent(true);
       setCooldown(60);
-      if (data.code) {
-        setValues((v) => ({ ...v, code: data.code! }));
-      }
       setErrors((prev) => {
         const nextErr = { ...prev };
         delete nextErr.email;

@@ -165,19 +165,9 @@ export async function sendVerificationCode(rawEmail: string) {
   const result = await sendTransactionalEmail({ to: email, ...message });
   if (result.status === "sent") return { ok: true, message: GENERIC_SEND_MESSAGE };
 
-  // Development without a provider or simulation mode:
-  if (
-    (result.status === "not_configured" && env.NODE_ENV !== "production") ||
-    env.ALLOW_SIMULATED_EMAIL
-  ) {
-    console.log(`[auth] ALLOW_SIMULATED_EMAIL is active. Code for ${email} is ${code}`);
-    return {
-      ok: true,
-      message: env.ALLOW_SIMULATED_EMAIL
-        ? `[Preview Mode] Your verification code is: ${code}`
-        : GENERIC_SEND_MESSAGE,
-      code: env.ALLOW_SIMULATED_EMAIL ? code : undefined,
-    };
+  // Development without a provider:
+  if (result.status === "not_configured" && env.NODE_ENV !== "production") {
+    return { ok: true, message: GENERIC_SEND_MESSAGE };
   }
 
   // The code never reached the user: burn it so it can't be guessed.
