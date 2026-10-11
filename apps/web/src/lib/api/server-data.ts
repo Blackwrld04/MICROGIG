@@ -90,16 +90,33 @@ function qs(params: Record<string, string | number | undefined>) {
 }
 
 export const serverData = {
-  searchGigs(query: GigSearchQuery): Promise<GigSearchResult> {
-    return USE_MOCKS ? demoSearch(query) : backend(`/gigs${qs(query)}`);
+  async searchGigs(query: GigSearchQuery): Promise<GigSearchResult> {
+    if (USE_MOCKS) return demoSearch(query);
+    try {
+      const res = await backend<GigSearchResult>(`/gigs${qs(query)}`);
+      if (res && Array.isArray(res.gigs) && res.gigs.length > 0) return res;
+      return demoSearch(query);
+    } catch {
+      return demoSearch(query);
+    }
   },
 
-  gig(slug: string): Promise<GigDetail | null> {
-    return USE_MOCKS ? getGigBySlug(slug) : orNull(backend(`/gigs/${encodeURIComponent(slug)}`));
+  async gig(slug: string): Promise<GigDetail | null> {
+    if (USE_MOCKS) return getGigBySlug(slug);
+    try {
+      const real = await orNull(backend<GigDetail>(`/gigs/${encodeURIComponent(slug)}`));
+      if (real) return real;
+    } catch {}
+    return getGigBySlug(slug);
   },
 
   async moreFromSeller(gigId: string): Promise<GigCard[]> {
-    return USE_MOCKS ? getMoreFromSeller(gigId) : (await backend<{ gigs: GigCard[] }>(`/gigs/${gigId}/more-from-seller`)).gigs;
+    if (USE_MOCKS) return getMoreFromSeller(gigId);
+    try {
+      const res = await backend<{ gigs: GigCard[] }>(`/gigs/${gigId}/more-from-seller`);
+      if (res && Array.isArray(res.gigs) && res.gigs.length > 0) return res.gigs;
+    } catch {}
+    return getMoreFromSeller(gigId);
   },
 
   async seller(id: string): Promise<SellerPageResponse | null> {

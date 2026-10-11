@@ -19,6 +19,7 @@ try {
 import { env } from "./env.js";
 import { buildApp } from "./app.js";
 import { startReconcilerCron } from "./lib/cron.js";
+import { ensureInitialData } from "./db/auto-seed.js";
 
 async function main() {
   const app = await buildApp();
@@ -28,6 +29,7 @@ async function main() {
     app.log.info(`microgig-api listening on http://0.0.0.0:${env.PORT}`);
     app.log.info(`Health: http://localhost:${env.PORT}/api/v1/health`);
 
+    ensureInitialData().catch((err) => app.log.error(err, "auto-seed error"));
     startReconcilerCron(app.log);
   } catch (err) {
     app.log.error(err);
